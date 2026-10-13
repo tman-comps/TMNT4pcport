@@ -882,8 +882,8 @@ int main(int argc, char** argv) {
   apply_fullscreen();
 
   SDL_AudioSpec want = {0}, have;
-  want.freq = SAMPLE_RATE; want.format = AUDIO_S16; want.channels = 2; want.samples = 1024;
-  SDL_AudioDeviceID dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+  want.freq = SAMPLE_RATE; want.format = AUDIO_S16; want.channels = 2; want.samples = 512;
+  SDL_AudioDeviceID dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);   // SDL converts to the device rate
   if (dev) SDL_PauseAudioDevice(dev, 0);
   for (int i = 0; i < SDL_NumJoysticks(); i++) if (SDL_IsGameController(i)) pad_added(i);
 
@@ -1014,11 +1014,18 @@ int main(int argc, char** argv) {
         crashlog_frame();
       }
       if (dev && !fast) {
-        int n = SAMPLE_RATE / 60;
+        // the console runs at 60.0988 frames a second: 798.68 samples a frame at 48 kHz
+        static double acc;
+        acc += (double)have.freq / 60.0988;
+        int n = (int)acc; acc -= n;
         snes_setSamples(g_snes, g_audio, n);
         for (int i = 0; i < n * 2; i++) g_audio[i] = (int16_t)(g_audio[i] * cfg.volume / 100);
-        msu_mix(g_audio, n, SAMPLE_RATE, cfg.volume * cfg.music_vol / 100);
-        if (SDL_GetQueuedAudioSize(dev) < (Uint32)(have.freq / 5 * 4)) SDL_QueueAudio(dev, g_audio, n * 4);
+        msu_mix(g_audio, n, have.freq, cfg.volume * cfg.music_vol / 100);
+        // keep about 3-6 frames queued: low latency, and any drift (display vs audio clock) is
+        // absorbed by dropping or skipping a frame's worth only when the queue leaves that range
+        Uint32 q = SDL_GetQueuedAudioSize(dev), fb = (Uint32)n * 4;
+        if (q < fb * 6) SDL_QueueAudio(dev, g_audio, n * 4);
+        if (q < fb * 2) SDL_QueueAudio(dev, g_audio, n * 4);   // running dry: pad with this frame again
       }
     }
     g_ui_tick++;
