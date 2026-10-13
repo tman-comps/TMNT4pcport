@@ -10,6 +10,8 @@
 //   until:ADDR:VAL[:S]  run until a WRAM byte equals VAL (max 20000 frames), tapping Start with :S
 //   seed:N        seed for r
 //   god:on|off    keep lives / health topped up every frame (game.h addresses)
+//   oc:on|off     faster CPU (the port's Remove slowdown)
+//   lag / lagreport  count play frames in which no object changed (lag frames)
 //   weak:on|off   enemies die in one hit (coverage runs)
 //   poke:ADDR:VAL write a WRAM byte now      freeze:ADDR:VAL  write it every frame
 //   peek:ADDR:N   print N WRAM bytes
@@ -43,7 +45,7 @@ static Snes* S;
 static uint32_t rng = 1;
 static int wide;   // extra columns on each side (wide:N), shots then come from the PPU's wide buffer
 static uint32_t rnd(void) { rng = rng * 1103515245u + 12345u; return rng >> 16; }
-static int frame_no, god, weak, do_hash, song_log, ach_on;
+static int frame_no, god, weak, do_hash, song_log, ach_on, lag_on, lag_n, lag_frames;
 static struct { uint32_t a; uint8_t v; } fz[64]; static int nfz;
 static struct { uint32_t a; int n; uint8_t last[32]; } wt[16]; static int nwt;
 
@@ -85,6 +87,11 @@ static void frame(uint16_t p1, uint16_t p2) {
   if (wide) ws_update(wide);
   runner_frame(S);
   frame_no++;
+  if (lag_on && game_in_play(S->ram)) {   // the game does its work in the NMI and idles at $80:8154 (which calls
+    lag_frames++;                         // the sound streamer at $80:9D16): not idle at vblank = still busy = lag
+    uint32_t pc = (S->cpu->k & 0x7f) << 16 | S->cpu->pc;
+    if (!((pc >= 0x008154 && pc <= 0x008164) || (pc >= 0x009D16 && pc <= 0x009F70))) lag_n++;
+  }
   if (wav) wav_frame();
   if (ach_on) {
     const GameEvents* ev = game_events(S->ram);
@@ -219,7 +226,7 @@ int main(int argc, char** argv) {
     uint16_t p2;
     if (w[0] == 'w' && w[1] >= '0' && w[1] <= '9') { for (int n = atoi(w + 1); n > 0; n--) frame(0, 0); }
     else if (w[0] == 'h' && strchr(w, ':')) { uint16_t b = parse_btns(w + 1, &p2); for (int n = atoi(strchr(w, ':') + 1); n > 0; n--) frame(b, p2); }
-    else if (w[0] == 'p' && strncmp(w, "peek:", 5) && strncmp(w, "poke:", 5)) { uint16_t b = parse_btns(w + 1, &p2); for (int n = 0; n < 4; n++) frame(b, p2); for (int n = 0; n < 8; n++) frame(0, 0); }
+    else if (w[0] == 'p' && (w[1] == '2' || (w[1] >= 'A' && w[1] <= 'Z') || strchr("bys", w[1]) && !strchr(w, ':'))) { uint16_t b = parse_btns(w + 1, &p2); for (int n = 0; n < 4; n++) frame(b, p2); for (int n = 0; n < 8; n++) frame(0, 0); }
     else if (w[0] == 'r' && w[1] >= '0' && w[1] <= '9') random_play(atoi(w + 1));
     else if (w[0] == 'f' && w[1] >= '0' && w[1] <= '9') fight_play(atoi(w + 1));
     else if (!strncmp(w, "until:", 6)) {   // until:ADDR:VAL[:S] wait (tapping Start if :S) until WRAM byte == VAL
@@ -230,6 +237,20 @@ int main(int argc, char** argv) {
     else if (!strncmp(w, "seed:", 5)) rng = strtoul(w + 5, 0, 0);
     else if (!strncmp(w, "god:", 4)) god = !strcmp(w + 4, "on");
     else if (!strncmp(w, "weak:", 5)) weak = !strcmp(w + 5, "on");
+    else if (!strncmp(w, "oc:", 3)) { extern int g_snes_overclock; g_snes_overclock = !strcmp(w + 3, "on"); }
+    else if (!strcmp(w, "lag")) { lag_on = 1; lag_n = lag_frames = 0; }
+    else if (!strncmp(w, "pcs:", 4)) {   // where the CPU is at the end of each of N frames (histogram)
+      static uint32_t pcs[4096], cnt[4096]; int np = 0, n = atoi(w + 4);
+      for (int i = 0; i < n; i++) {
+        frame(0, 0);
+        uint32_t pc = (S->cpu->k << 16) | S->cpu->pc; int k;
+        for (k = 0; k < np && pcs[k] != pc; k++) {}
+        if (k == np && np < 4096) { pcs[np] = pc; cnt[np++] = 0; }
+        if (k < 4096) cnt[k]++;
+      }
+      for (int k = 0; k < np; k++) if (cnt[k] * 20 >= (uint32_t)n) printf("pc %06X %u\n", pcs[k], cnt[k]);
+    }
+    else if (!strcmp(w, "lagreport")) printf("lag: %d of %d play frames\n", lag_n, lag_frames);
     else if (!strncmp(w, "poke:", 5)) { char* e; uint32_t a = strtoul(w + 5, &e, 16); S->ram[a & 0x1ffff] = strtoul(e + 1, 0, 16); }
     else if (!strncmp(w, "freeze:", 7)) { char* e; fz[nfz].a = strtoul(w + 7, &e, 16) & 0x1ffff; fz[nfz++].v = strtoul(e + 1, 0, 16); }
     else if (!strncmp(w, "peek:", 5)) {

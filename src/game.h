@@ -57,7 +57,7 @@ typedef struct {
   bool continued;       // a continue was used
   bool beaten;          // the final scene was cleared: the ending starts
   bool two_players;     // both players are in the game
-  bool time_trial;      // playing Time Trial
+  bool time_trial;      // playing Time Trial or Versus (no records, achievements only where noted)
 } GameEvents;
 const GameEvents* game_events(const uint8_t* ram);
 #endif

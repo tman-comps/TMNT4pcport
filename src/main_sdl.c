@@ -638,6 +638,7 @@ static void ui_toast_text(const char* t, const char* d) {
   g_toast_timer = d ? 300 : 90;
 }
 static void toast_tick(void) {
+  if (g_menu) return;   // pop-ups wait while the menu is open
   if (g_toast_timer > 0) { g_toast_timer--; return; }
   int id = ach_pop_toast();
   if (id >= 0) {
@@ -657,8 +658,8 @@ static bool draw_overlays(void) {   // pop-up and timer; true if anything was dr
       any = true;
     }
   }
-  if (g_toast_timer > 0) {
-    int h = g_toast_d[0] ? 34 : 20, y = 224 - h - 18;
+  if (g_toast_timer > 0 && !g_menu) {
+    int h = g_toast_d[0] ? 34 : 20, y = 224 - h - 26;
     int a = g_toast_timer < 16 ? g_toast_timer * 16 : 256;
     ui_toast_box(16, y, 224, h, a);
     ui_text_a(24, y + 6, g_toast_t, UI_GOLD, a);

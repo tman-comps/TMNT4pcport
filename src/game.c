@@ -68,9 +68,12 @@ const GameEvents* game_events(const uint8_t* ram) {
   if (mode != 6) { e_played_stage = -1; }
   if (mode <= 4 && mode >= 1) e_from_title = 1;
   if (play && !e_prev_play) {
-    ev.scene_start = st + 1;
-    if (e_from_title) { ev.new_game = true; e_from_title = 0; ev.time_trial = game_time_trial(ram); }
-    e_played_stage = st;
+    if (st >= 10) { ev.time_trial = true; e_from_title = 0; }   // Versus (fought in Splinter's lair): not a game
+    else {
+      ev.scene_start = st + 1;
+      if (e_from_title) { ev.new_game = true; e_from_title = 0; ev.time_trial = game_time_trial(ram); }
+      e_played_stage = st;
+    }
   }
   // a scene is cleared when play stops and the scene number moves on to the next one
   if (mode == 6 && e_prev_stage >= 0 && st == e_prev_stage + 1 && e_played_stage == e_prev_stage) ev.scene_clear = st;
