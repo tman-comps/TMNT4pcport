@@ -10,6 +10,7 @@
 //   until:ADDR:VAL[:S]  run until a WRAM byte equals VAL (max 20000 frames), tapping Start with :S
 //   seed:N        seed for r
 //   god:on|off    keep lives / health topped up every frame (game.h addresses)
+//   weak:on|off   enemies die in one hit (coverage runs)
 //   poke:ADDR:VAL write a WRAM byte now      freeze:ADDR:VAL  write it every frame
 //   peek:ADDR:N   print N WRAM bytes
 //   shot:FILE     screenshot (PPM, 256x224)
@@ -30,12 +31,14 @@
 #include "runner.h"
 #include "game.h"
 #include "msu.h"
+#include "widescreen.h"
 
 extern uint8_t* g_cdl;
 static Snes* S;
 static uint32_t rng = 1;
+static int wide;   // extra columns on each side (wide:N), shots then come from the PPU's wide buffer
 static uint32_t rnd(void) { rng = rng * 1103515245u + 12345u; return rng >> 16; }
-static int frame_no, god, do_hash, song_log;
+static int frame_no, god, weak, do_hash, song_log;
 static struct { uint32_t a; uint8_t v; } fz[64]; static int nfz;
 static struct { uint32_t a; int n; uint8_t last[32]; } wt[16]; static int nwt;
 
@@ -58,12 +61,15 @@ static void frame(uint16_t p1, uint16_t p2) {
   for (int i = 0; i < 12; i++) { snes_setButtonState(S, 1, i, (p1 >> i) & 1); snes_setButtonState(S, 2, i, (p2 >> i) & 1); }
   for (int i = 0; i < nfz; i++) S->ram[fz[i].a] = fz[i].v;
   if (god) game_god_mode(S->ram);
+  if (weak && game_in_play(S->ram))   // object health (see analysis/tmnt4/ram.txt): everything dies in one hit
+    for (int a = 0x0900 + 0x1A; a < 0x1A80; a += 0x70) if (S->ram[a] > 1 && S->ram[a] <= 0xC0 && !S->ram[a + 1]) S->ram[a] = 1;
+  if (wide) ws_update(wide);
   runner_frame(S);
   frame_no++;
   if (song_log) {
-    static int last = -1;
-    int sg = msu_current_song();
-    if (sg != last) { printf("f%d song %02X  # %s\n", frame_no, sg, game_describe(S->ram)); last = sg; }
+    static uint32_t last = 0;
+    uint32_t sg = msu_current_song();
+    if (sg != last) { printf("f%d song %08X  # %s\n", frame_no, sg, game_describe(S->ram)); last = sg; }
   }
   if (do_hash) {
     uint64_t h = 1469598103934665603ull;
@@ -141,7 +147,6 @@ static void shot(const char* name) {
   fclose(o);
 }
 
-static int wide;   // extra columns on each side (wide:N), shots then come from the PPU's wide buffer
 static void shot_wide(const char* name) {
   const int WW = 256 + 2 * PPU_WIDE_MAX;
   FILE* o = fopen(name, "wb");
@@ -163,6 +168,7 @@ static void state_io(const char* name, int save) {
   } else {
     int n; uint8_t* d = runner_load_file(name, &n);
     if (!d || !snes_loadState(S, d, n)) fprintf(stderr, "can't load state %s\n", name);
+    else if (wide) ws_state_loaded();
     free(d);
   }
 }
@@ -191,6 +197,7 @@ int main(int argc, char** argv) {
     }
     else if (!strncmp(w, "seed:", 5)) rng = strtoul(w + 5, 0, 0);
     else if (!strncmp(w, "god:", 4)) god = !strcmp(w + 4, "on");
+    else if (!strncmp(w, "weak:", 5)) weak = !strcmp(w + 5, "on");
     else if (!strncmp(w, "poke:", 5)) { char* e; uint32_t a = strtoul(w + 5, &e, 16); S->ram[a & 0x1ffff] = strtoul(e + 1, 0, 16); }
     else if (!strncmp(w, "freeze:", 7)) { char* e; fz[nfz].a = strtoul(w + 7, &e, 16) & 0x1ffff; fz[nfz++].v = strtoul(e + 1, 0, 16); }
     else if (!strncmp(w, "peek:", 5)) {
@@ -205,21 +212,28 @@ int main(int argc, char** argv) {
       wide = atoi(w + 5); if (wide > PPU_WIDE_MAX) wide = PPU_WIDE_MAX;
       if (!S->ppu->wideBuffer) S->ppu->wideBuffer = calloc((256 + 2 * PPU_WIDE_MAX) * 240, 4);
       S->ppu->wideExtra = wide;
+      ws_init(S); ws_state_loaded();
     }
     else if (!strncmp(w, "save:", 5)) state_io(w + 5, 1);
     else if (!strncmp(w, "load:", 5)) state_io(w + 5, 0);
+    else if (!strncmp(w, "vram:", 5)) {   // VRAM (64 KB), then CGRAM (512 bytes), then the PPU's BG settings
+      FILE* o = fopen(w + 5, "wb"); fwrite(S->ppu->vram, 1, sizeof S->ppu->vram, o); fwrite(S->ppu->cgram, 1, sizeof S->ppu->cgram, o); fclose(o);
+      for (int l = 0; l < 4; l++) printf("bg%d tilemap %04X tiles %04X\n", l + 1, S->ppu->bgLayer[l].tilemapAdr, S->ppu->bgLayer[l].tileAdr);
+    }
     else if (!strncmp(w, "dump:", 5)) { FILE* o = fopen(w + 5, "wb"); fwrite(S->ram, 1, sizeof S->ram, o); fclose(o); }
     else if (!strcmp(w, "hash")) do_hash = 1;
     else if (!strcmp(w, "apulog")) g_snes_write_filter = apu_filter;
-    else if (!strcmp(w, "songlog")) { msu_init(S, "/nonexistent/", "msu"); msu_enable(1); song_log = 1; }
+    else if (!strcmp(w, "songlog")) { msu_init(S, "/nonexistent/", "msu"); msu_enable(1); song_log = 1; extern int g_msu_debug; g_msu_debug = 1; }
     else if (!strcmp(w, "apuoff")) g_snes_write_filter = NULL;
     else if (!strncmp(w, "cdl:", 4)) cdl_out = w + 4;
-    else if (!strcmp(w, "info")) printf("f%d %s\n", frame_no, game_describe(S->ram));
+    else if (!strcmp(w, "info")) printf("f%d %s  bg hofs %d %d %d\n", frame_no, game_describe(S->ram), S->ppu->bgLayer[0].hScroll, S->ppu->bgLayer[1].hScroll, S->ppu->bgLayer[2].hScroll);
     else { fprintf(stderr, "unknown script word: %s\n", w); return 1; }
   }
   if (cdl_out && g_cdl) { FILE* o = fopen(cdl_out, "wb"); fwrite(g_cdl, 1, 1 << 24, o); fclose(o); }
-  uint32_t miss[64]; int n = runner_miss_list(miss, 64);
-  fprintf(stderr, "frames %d, misses: %llu total, %d unique\n", frame_no, (unsigned long long)runner_misses(), n);
-  for (int i = 0; i < n && i < 16; i++) fprintf(stderr, "  %06X\n", miss[i]);
+  static uint32_t miss[4096]; int n = runner_miss_list(miss, 4096), nrom = 0;
+  for (int i = 0; i < n; i++) if ((miss[i] >> 16) != 0x7E && (miss[i] >> 16) != 0x7F && (miss[i] & 0xffff) >= 0x8000) nrom++;
+  fprintf(stderr, "frames %d, misses: %llu total, %d unique, %d unique in ROM\n", frame_no, (unsigned long long)runner_misses(), n, nrom);
+  for (int i = 0, k = 0; i < n && k < 16; i++)
+    if ((miss[i] >> 16) != 0x7E && (miss[i] >> 16) != 0x7F && (miss[i] & 0xffff) >= 0x8000) { fprintf(stderr, "  %06X\n", miss[i]); k++; }
   return 0;
 }

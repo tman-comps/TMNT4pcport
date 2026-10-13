@@ -23,10 +23,13 @@ extern uint8_t (*g_snes_write_filter)(Snes*, uint32_t, uint8_t);
 
 static Snes* s;
 static char g_dir[1024];
-static int g_map[256];
-static uint8_t g_logged[256];
-static int g_enabled, g_song = -1, g_pending = -1;
-static uint8_t g_ptr_lo;
+#define MAXMAP 128
+static struct { uint32_t song; int track; } g_map[MAXMAP];
+static int g_nmap;
+static uint32_t g_logged[256]; static int g_nlogged;
+static int g_enabled;
+static uint32_t g_song;
+static uint32_t g_hash = 2166136261u;   // FNV-1a of the bytes streamed to the sound CPU since the last stop
 static FILE* g_pcm;
 static uint32_t g_loop, g_data_len, g_pos;
 static double g_frac;
@@ -34,6 +37,10 @@ static int g_vol = 255, g_vol_target = 255, g_vol_step;
 static int g_current;
 static int g_sn, g_si;
 
+static int track_of(uint32_t song) {
+  for (int i = 0; i < g_nmap; i++) if (g_map[i].song == song) return g_map[i].track;
+  return 0;
+}
 static void stop(void) { if (g_pcm) fclose(g_pcm); g_pcm = NULL; g_current = 0; }
 
 static FILE* open_track(int n, uint32_t* loop, uint32_t* len) {
@@ -69,37 +76,31 @@ static int play(int n) {
   return 1;
 }
 
+int g_msu_debug;
+static void log_unmapped(Snes* sn, uint32_t song) {
+  for (int i = 0; i < g_nlogged; i++) if (g_logged[i] == song) return;
+  if (g_nlogged < 256) g_logged[g_nlogged++] = song;
+  char p[1100]; snprintf(p, sizeof p, "%s/unmapped.txt", g_dir);
+  FILE* f = fopen(p, "a");
+  if (f) { fprintf(f, "%08X  ?   # %s\n", song, game_describe(sn->ram)); fclose(f); }
+}
 static uint8_t filter(Snes* sn, uint32_t adr, uint8_t v) {
   uint32_t bank = (adr >> 16) & 0xff, a = adr & 0xffff;
-  bool wram = bank == 0x7e ? a == 0x1E2C || a == 0x1E2D : (bank & 0x7f) < 0x40 && (a == 0x1E2C || a == 0x1E2D);
-  if (wram) {
-    if (a == 0x1E2C) g_ptr_lo = v;
-    else {
-      int ptr = g_ptr_lo | v << 8;
-      if (ptr >= 0xB95D && (ptr - 0xB95D) % 8 == 0 && ptr < 0xB95D + 8 * 256) {
-        g_song = g_pending = (ptr - 0xB95D) / 8;
-        if (g_enabled && !g_map[g_song] && !g_logged[g_song]) {   // help complete the mapping
-          g_logged[g_song] = 1;
-          char p[1100]; snprintf(p, sizeof p, "%s/unmapped.txt", g_dir);
-          FILE* f = fopen(p, "a");
-          if (f) { fprintf(f, "%02X  ?   # %s\n", g_song, game_describe(sn->ram)); fclose(f); }
-        }
-      }
-    }
-    return v;
-  }
-  if ((bank & 0x7f) >= 0x40 || a != 0x2140) return v;
+  if ((bank & 0x7f) >= 0x40 || a < 0x2140 || a > 0x2143) return v;
+  if (a != 0x2140) { g_hash = (g_hash ^ v) * 16777619u; return v; }   // song data being streamed
   if (sn->cpu->pc != 0x835F || (sn->cpu->k & 0x7f) != 0) return v;   // only the game's command sender
   switch (v) {
-    case 0x80:   // start the song that was just streamed
-      if (g_enabled && g_pending >= 0) {
-        int n = g_map[g_pending];
-        g_pending = -1;
-        if (n && play(n)) return 0xFE;   // ours plays: keep the SPC music stopped
-        stop();
-      }
+    case 0x80: {   // start the song that was just streamed: identified by a checksum of its data
+      g_song = g_hash;
+      if (g_msu_debug) printf("  song %08X starts (%s)\n", g_song, game_describe(sn->ram));
+      if (!g_enabled) break;
+      int n = track_of(g_song);
+      if (n && play(n)) return 0xFE;   // ours plays: keep the SPC music stopped
+      if (!n) log_unmapped(sn, g_song);
+      stop();
       break;
-    case 0xFE: if (g_pending < 0) stop(); break;
+    }
+    case 0xFE: stop(); g_hash = 2166136261u; break;
     case 0xFC: g_vol_target = 0; g_vol_step = 2; break;
   }
   return v;
@@ -108,24 +109,23 @@ static uint8_t filter(Snes* sn, uint32_t adr, uint8_t v) {
 int msu_init(Snes* snes, const char* base_dir, const char* folder) {
   s = snes;
   stop();
-  memset(g_logged, 0, sizeof g_logged);
-  memset(g_map, 0, sizeof g_map);
+  g_nlogged = 0; g_nmap = 0;
   snprintf(g_dir, sizeof g_dir, "%s%s", base_dir, folder);
   char p[1100]; snprintf(p, sizeof p, "%s/msu.txt", g_dir);
   FILE* f = fopen(p, "r");
   if (f) {
     char line[256];
     while (fgets(line, sizeof line, f)) {
-      unsigned song; int n;
+      unsigned song; int n;   // song checksum (hex), track number
       if (line[0] == '#') continue;
-      if (sscanf(line, "%x %d", &song, &n) == 2 && song < 256) g_map[song] = n;
+      if (sscanf(line, "%x %d", &song, &n) == 2 && g_nmap < MAXMAP) { g_map[g_nmap].song = song; g_map[g_nmap++].track = n; }
     }
     fclose(f);
   }
   g_snes_write_filter = filter;
   int have = 0;
-  for (int i = 0; i < 256; i++) if (g_map[i]) {
-    uint32_t a, b; FILE* t = open_track(g_map[i], &a, &b);
+  for (int i = 0; i < g_nmap; i++) {
+    uint32_t a, b; FILE* t = open_track(g_map[i].track, &a, &b);
     if (t) { fclose(t); have++; }
   }
   return have;
@@ -133,7 +133,7 @@ int msu_init(Snes* snes, const char* base_dir, const char* folder) {
 
 void msu_enable(int on) { g_enabled = on; if (!on) stop(); }
 int msu_playing(void) { return g_pcm != NULL; }
-int msu_current_song(void) { return g_song; }
+uint32_t msu_current_song(void) { return g_song; }
 
 static int16_t g_sbuf[8192 * 2];
 static int refill(void) {

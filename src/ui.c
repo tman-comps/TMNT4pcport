@@ -1,5 +1,6 @@
 // See ui.h. Text uses the public-domain font8x8 (third_party/font8x8_basic.h) with a dark outline,
 // so it reads on any background.
+#include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 #include "ui.h"
@@ -33,11 +34,49 @@ static void frame(int x, int y, int w, int h, int a) {
   // light outer frame, darker inner line, like the game's HUD panels
   fill(x, y, w, 1, 0xE8E8F8, a); fill(x, y + h - 1, w, 1, 0xE8E8F8, a);
   fill(x, y, 1, h, 0xE8E8F8, a); fill(x + w - 1, y, 1, h, 0xE8E8F8, a);
-  fill(x + 1, y + 1, w - 2, 1, 0xF8C820, a); fill(x + 1, y + h - 2, w - 2, 1, 0xF8C820, a);
-  fill(x + 1, y + 1, 1, h - 2, 0xF8C820, a); fill(x + w - 2, y + 1, 1, h - 2, 0xF8C820, a);
+  fill(x + 1, y + 1, w - 2, 1, 0x3870E0, a); fill(x + 1, y + h - 2, w - 2, 1, 0x3870E0, a);
+  fill(x + 1, y + 1, 1, h - 2, 0x3870E0, a); fill(x + w - 2, y + 1, 1, h - 2, 0x3870E0, a);
 }
 void ui_box(int x, int y, int w, int h) { frame(x, y, w, h, 255); }
 void ui_toast_box(int x, int y, int w, int h, int alpha) { frame(x, y, w, h, alpha > 255 ? 255 : alpha); }
+
+// ---- the game's font: 44 glyphs, 2 bits per pixel (level 2 = letter, level 3 = shadow)
+static uint8_t g_gf[44][8][8];
+static int g_gf_ready;
+static const char k_gf_chars[] = " 0123456789@,.\"!ABCDEFGHIJKLMNOPQRSTUVWXYZ'-";   // '@' stands for the copyright sign
+static int gf_index(int c) {
+  const char* p = c ? strchr(k_gf_chars, c) : NULL;
+  return p ? (int)(p - k_gf_chars) : -1;
+}
+static uint32_t crc32(const uint8_t* d, int n) {
+  uint32_t c = 0xFFFFFFFF;
+  for (int i = 0; i < n; i++) { c ^= d[i]; for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320 & -(c & 1)); }
+  return ~c;
+}
+int ui_font_ready(void) { return g_gf_ready; }
+void ui_font_load(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (!f) return;
+  if (fread(g_gf, 1, sizeof g_gf, f) == sizeof g_gf) g_gf_ready = 1;
+  fclose(f);
+}
+void ui_font_capture(const uint16_t* vram, int base, const char* path) {
+  if (g_gf_ready) return;
+  uint8_t a[16], sp[16];
+  for (int i = 0; i < 8; i++) {
+    uint16_t w = vram[(base + 0x110 * 8 + i) & 0x7fff], z = vram[(base + 0x100 * 8 + i) & 0x7fff];
+    a[2 * i] = w & 255; a[2 * i + 1] = w >> 8; sp[2 * i] = z & 255; sp[2 * i + 1] = z >> 8;
+  }
+  if (crc32(a, 16) != 0x3d724f7c || crc32(sp, 16) != 0xecbb4b55) return;   // not the font (yet)
+  for (int g = 0; g < 44; g++)
+    for (int y = 0; y < 8; y++) {
+      uint16_t w = vram[(base + (0x100 + g) * 8 + y) & 0x7fff];
+      for (int x = 0; x < 8; x++) g_gf[g][y][x] = ((w >> (7 - x)) & 1) | (((w >> (15 - x)) & 1) << 1);
+    }
+  g_gf_ready = 1;
+  FILE* f = fopen(path, "wb");
+  if (f) { fwrite(g_gf, 1, sizeof g_gf, f); fclose(f); }
+}
 
 static int glyph(int c, int row) {
   if (c < 0 || c > 127) c = '?';
@@ -45,10 +84,21 @@ static int glyph(int c, int row) {
 }
 void ui_text_a(int x, int y, const char* s, uint32_t rgb, int alpha) {
   int a = alpha > 255 ? 255 : alpha;
+  uint32_t shadow = (((rgb >> 16) & 255) / 4) << 16 | (((rgb >> 8) & 255) / 4 + 0x10) << 8 | ((rgb & 255) / 3 + 0x50);
   for (int pass = 0; pass < 2; pass++) {
     int cx = x;
     for (const char* p = s; *p; p++, cx += 8) {
       int c = toupper((unsigned char)*p);
+      int gi = g_gf_ready ? gf_index(c) : -1;
+      if (gi >= 0) {   // the game's own glyph: letter + its built-in shadow, plus a faint outline
+        for (int r = 0; r < 8; r++) for (int k = 0; k < 8; k++) {
+          int v = g_gf[gi][r][k];
+          if (!v) continue;
+          if (pass == 0) { for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) put(cx + k + dx, y + r + dy, 0x000000, a / 2); }
+          else put(cx + k, y + r, v == 3 ? shadow : rgb, a);
+        }
+        continue;
+      }
       for (int r = 0; r < 8; r++) {
         int bits = glyph(c, r);
         for (int k = 0; k < 8; k++) {

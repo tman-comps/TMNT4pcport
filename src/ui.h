@@ -23,4 +23,10 @@ void ui_text_r(int xr, int y, const char* s, uint32_t rgb);   // right-aligned
 int ui_text_w(const char* s);
 void ui_wrap(int x, int y, int w, const char* s, uint32_t rgb);   // word-wrapped, 10 px lines
 void ui_cursor(int x, int y, int tick);             // the selection marker
+// The game's own HUD font, captured from VRAM (BG3 tiles $100-$12B: space 0-9 (c) , . " ! A-Z ' -)
+// the first time it is there, and cached in tmnt_font.bin next to the program. Until then (and for
+// characters the font doesn't have) the built-in 8x8 font is used.
+void ui_font_load(const char* path);
+void ui_font_capture(const uint16_t* vram, int bg3_tile_word_adr, const char* save_path);   // cheap; call now and then
+int ui_font_ready(void);
 #endif

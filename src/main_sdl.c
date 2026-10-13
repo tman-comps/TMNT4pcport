@@ -45,6 +45,7 @@ static int16_t g_audio[SAMPLE_RATE / 50 * 2];
 static SDL_Window* g_win;
 static char g_base[1024], g_ini_path[1100], g_state_path[1100], g_cont_path[1100];
 static bool g_quit;
+static char g_font_path[1100];
 
 // ---------------------------------------------------------------- settings
 enum { ASPECT_4_3, ASPECT_8_7, ASPECT_STRETCH, ASPECT_COUNT };
@@ -261,7 +262,9 @@ static bool state_load_from(const char* path) {
   if (!f) return false;
   int n = (int)fread(g_state, 1, 4 * 1024 * 1024, f);
   fclose(f);
-  return n > 0 && snes_loadState(g_snes, g_state, n);
+  bool ok = n > 0 && snes_loadState(g_snes, g_state, n);
+  if (ok) ws_state_loaded();
+  return ok;
 }
 static void ui_toast_text(const char* t, const char* d);
 static bool g_assisted;    // save states / rewind / extras used: no achievements or records this session
@@ -287,6 +290,7 @@ static bool restart_available(void) { return g_cont_len > 0 && game_in_play(g_sn
 static void restart_scene(void) {
   if (!g_cont_len) return;
   snes_loadState(g_snes, g_cont, g_cont_len);
+  ws_state_loaded();
   release_all();
   crashlog_event("restart scene");
 }
@@ -315,6 +319,7 @@ static bool rewind_step(void) {
   g_rw_head = (g_rw_head + RW_SLOTS - 1) % RW_SLOTS; g_rw_count--;
   int i = (g_rw_head + RW_SLOTS - 1) % RW_SLOTS;
   snes_loadState(g_snes, g_rw_buf[i], g_rw_len[i]);
+  ws_state_loaded();
   if (!g_assisted) crashlog_event("rewind used");
   g_assisted = true;
   return true;
@@ -801,6 +806,8 @@ int main(int argc, char** argv) {
   msu_enable(cfg.msu && g_msu_songs);
   g_runner_after_vblank = menus_after_vblank;
   g_at = getenv("TMNT_AUTOTEST");
+  snprintf(g_font_path, sizeof g_font_path, "%stmnt_font.bin", g_base);
+  ui_font_load(g_font_path);
 
   g_win = SDL_CreateWindow("Teenage Mutant Ninja Turtles IV - Turtles in Time", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                            256 * 4, 224 * 4, SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
@@ -955,6 +962,7 @@ int main(int argc, char** argv) {
       }
     }
     g_ui_tick++;
+    if (!ui_font_ready() && (g_ui_tick & 31) == 0) ui_font_capture(g_snes->ppu->vram, g_snes->ppu->bgLayer[2].tileAdr, g_font_path);
     toast_tick();
     if (g_report_timer > 0) g_report_timer--;
 
