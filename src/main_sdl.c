@@ -522,8 +522,7 @@ static void menu_change(int id, int dir, bool activate) {
     case M_PG_GAME: if (activate) go_page(PG_GAME); break;
     case M_PG_P1: if (activate) go_page(PG_P1); break;
     case M_PG_P2: if (activate) go_page(PG_P2); break;
-    case M_PG_EXTRAS: if (activate && cfg.unlocked) go_page(PG_EXTRAS);
-                      else if (activate) ui_toast_text("EXTRAS ARE LOCKED", "BEAT THE GAME TO UNLOCK THEM."); break;
+    case M_PG_EXTRAS: if (activate && cfg.unlocked) go_page(PG_EXTRAS); break;   // the row shows LOCKED until then
     case M_REPORT: if (activate) { crashlog_report(); g_report_timer = 180; } break;
     case M_WIDE: cfg.wide = (cfg.wide + d + WIDE_COUNT) % WIDE_COUNT; break;
     case M_M7: cfg.m7 = (cfg.m7 + d + 3) % 3; break;
@@ -592,19 +591,31 @@ static void draw_menu(void) {
       ui_text(bx + 26, y, t, i == g_ach_sel ? UI_GREEN : got ? UI_WHITE : UI_GREY);
     }
     const char *t, *d; ach_get(g_ach_sel, &t, &d);
-    ui_wrap(bx + 12, 172, bw - 24, d, UI_WHITE);
+    ui_wrap(bx + 12, 174, bw - 24, d, UI_WHITE);
     char c[32]; snprintf(c, sizeof c, "%d / %d", ach_unlocked_count(), ach_total());
-    ui_text_r(bx + bw - 12, 20, c, UI_GOLD);
+    ui_text_r(bx + bw - 12, 160, c, UI_GOLD);
     return;
   }
   if (g_page == PG_STATS) {
     ui_box(bx, 12, bw, 200);
     ui_heading(20, k_page_titles[g_page]);
     char lines[24][48]; int n = extras_stat_lines(lines, 24);
-    for (int i = 0; i < n && i < 12; i++) {
+    int y = 40, sc = 0;
+    for (int i = 0; i < n; i++) {
       char* sep = strchr(lines[i], '|');
-      if (sep) { *sep = 0; ui_text(bx + 12, 42 + i * 13, lines[i], UI_WHITE); ui_text_r(bx + bw - 12, 42 + i * 13, sep + 1, UI_GOLD); }
-      else ui_text(bx + 12, 42 + i * 13, lines[i], UI_GREEN);
+      if (!strncmp(lines[i], " SCENE ", 7) && sep) {   // best scene times: two columns
+        *sep = 0;
+        int col = sc % 2, x = bx + 12 + col * 108;
+        char num[8]; snprintf(num, sizeof num, "%s", lines[i] + 7);
+        ui_text(x, y, num, UI_WHITE); ui_text_r(x + 96, y, sep + 1, UI_GOLD);
+        if (col) y += 12;
+        sc++;
+        continue;
+      }
+      if (sc % 2) { y += 12; sc = 0; }
+      if (sep) { *sep = 0; ui_text(bx + 12, y, lines[i], UI_WHITE); ui_text_r(bx + bw - 12, y, sep + 1, UI_GOLD); }
+      else ui_text(bx + 12, y, lines[i], UI_GREEN);
+      y += 12;
     }
     return;
   }

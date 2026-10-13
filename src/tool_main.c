@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
     uint16_t p2;
     if (w[0] == 'w' && w[1] >= '0' && w[1] <= '9') { for (int n = atoi(w + 1); n > 0; n--) frame(0, 0); }
     else if (w[0] == 'h' && strchr(w, ':')) { uint16_t b = parse_btns(w + 1, &p2); for (int n = atoi(strchr(w, ':') + 1); n > 0; n--) frame(b, p2); }
-    else if (w[0] == 'p' && (w[1] == '2' || (w[1] >= 'A' && w[1] <= 'Z') || strchr("bys", w[1]) && !strchr(w, ':'))) { uint16_t b = parse_btns(w + 1, &p2); for (int n = 0; n < 4; n++) frame(b, p2); for (int n = 0; n < 8; n++) frame(0, 0); }
+    else if (w[0] == 'p' && (w[1] == '2' || (w[1] >= 'A' && w[1] <= 'Z') || (strchr("bys", w[1]) && !strchr(w, ':')))) { uint16_t b = parse_btns(w + 1, &p2); for (int n = 0; n < 4; n++) frame(b, p2); for (int n = 0; n < 8; n++) frame(0, 0); }
     else if (w[0] == 'r' && w[1] >= '0' && w[1] <= '9') random_play(atoi(w + 1));
     else if (w[0] == 'f' && w[1] >= '0' && w[1] <= '9') fight_play(atoi(w + 1));
     else if (!strncmp(w, "until:", 6)) {   // until:ADDR:VAL[:S] wait (tapping Start if :S) until WRAM byte == VAL

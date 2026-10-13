@@ -1,8 +1,8 @@
 // Port UI drawn over the game picture: a 256x224 ARGB canvas (straight alpha) the front-end scales
 // together with the picture. Menu boxes, the pop-ups and the timer use the look of the game's own
 // HUD: dark boxes with a light frame, yellow headings, green highlight.
-#ifndef UI_H
-#define UI_H
+#ifndef TMNT_UI_H
+#define TMNT_UI_H
 #include <stdint.h>
 
 #define UI_W 256
