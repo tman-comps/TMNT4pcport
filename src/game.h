@@ -7,10 +7,13 @@
 
 // WRAM addresses
 enum {
+  RAM_FRAMES   = 0x003A,   // 16-bit frame counter
   RAM_MODE     = 0x0032,   // main mode: 1 intro, 2 title, 4 title menu, 5/6 game (select, scenes, ending)
   RAM_SELECT   = 0x0072,   // turtle select screen step (5 = waiting for the choice)
   RAM_TRANSIT  = 0x0068,   // 1 between scenes (select, cutscene, scene card, boss defeated -> next scene)
-  RAM_STAGE    = 0x0082,   // scene 0-9: Big Apple 3 AM ... Technodrome (the final scene)
+  RAM_STAGE    = 0x0082,   // scene 0-9: Big Apple 3 AM ... Technodrome (the final scene); 10 = Splinter's lair (ending, Versus)
+  RAM_BOSS_HP  = 0x1BC8,   // the boss bar's value (0 = no boss on screen)
+  RAM_OBJ_HP   = 0x091A,   // object health, every 0x70 bytes
   RAM_PLAYER   = 0x1A80,   // player blocks, 0x40 bytes each (player 1, player 2)
   P_TURTLE     = 0x1A,     //   0 Leo, 1 Mike, 2 Don, 3 Raph
   P_LIVES      = 0x20,
@@ -26,6 +29,7 @@ static inline const uint8_t* game_player(const uint8_t* ram, int p) { return ram
 static inline int game_lives(const uint8_t* ram, int p) { return game_player(ram, p)[P_LIVES]; }
 // health; above HP_MAX while a turtle drops into the scene (treated as full)
 static inline int game_hp(const uint8_t* ram, int p) { int h = game_player(ram, p)[P_HP]; return h > HP_MAX ? HP_MAX : h; }
+static inline int game_boss_hp(const uint8_t* ram) { return ram[RAM_BOSS_HP]; }
 static inline int game_turtle(const uint8_t* ram, int p) { return game_player(ram, p)[P_TURTLE] & 3; }
 
 bool game_in_play(const uint8_t* ram);            // a scene is being played (not select, cards, cutscenes, menus)
@@ -37,7 +41,6 @@ void game_refill_lives(uint8_t* ram, int p);
 void game_refill_hp(uint8_t* ram, int p);
 bool game_cheat_entered(const uint8_t* ram);     // one of the game's own codes was entered
 bool game_time_trial(const uint8_t* ram);        // the game being played is Time Trial
-bool game_final_boss_defeated(const uint8_t* ram);
 
 // Fills in lives and health (test drivers and the coverage runs).
 void game_god_mode(uint8_t* ram);

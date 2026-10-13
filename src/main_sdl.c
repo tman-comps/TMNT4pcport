@@ -348,7 +348,10 @@ static void extras_apply(void) {
   uint8_t* ram = g_snes->ram;
   if (!cfg.unlocked) return;
   bool any = false;
-  if (cfg.x_stage && game_at_turtle_select(ram)) { game_set_start_stage(ram, cfg.x_stage - 1); any = true; }
+  // start scene: only on the select screen of a new game (scene 1 chosen by the game; Versus uses scene index 10)
+  if (cfg.x_stage > 1 && game_at_turtle_select(ram) && (game_stage(ram) == 0 || game_stage(ram) == cfg.x_stage - 1)) {
+    game_set_start_stage(ram, cfg.x_stage - 1); any = true;
+  }
   if (cfg.x_lives && game_in_play(ram)) for (int p = 0; p < 2; p++) if (game_player_active(ram, p)) { game_refill_lives(ram, p); any = true; }
   if (cfg.x_health && game_in_play(ram)) for (int p = 0; p < 2; p++) if (game_player_active(ram, p)) { game_refill_hp(ram, p); any = true; }
   if (any && !g_assisted) { g_assisted = true; crashlog_event("extras in use"); }
@@ -772,7 +775,32 @@ static bool find_rom(int argc, char** argv) {
   return false;
 }
 
-static void menus_after_vblank(void) {}
+// "PC PORT BY T-MAN" on the title screen, in the title's own font and palette: written into the free
+// row between OPTION and the copyright lines (BG3 tilemap row 24), after the game's vblank uploads.
+static void title_credit(void) {
+  Ppu* ppu = g_snes->ppu;
+  int mode = game_mode(g_snes->ram);
+  if (mode < 2 || mode > 4) return;
+  uint16_t* map = &ppu->vram[ppu->bgLayer[2].tilemapAdr & 0x7fff];
+  // the title's "KONAMI" (row 25) must be there: K O N A M I = font tiles $11A $11E $11D $110 $11C $118
+  static const uint16_t konami[6] = {0x11A, 0x11E, 0x11D, 0x110, 0x11C, 0x118};
+  int col = -1;
+  for (int c = 0; c + 6 <= 32 && col < 0; c++) {
+    int ok = 1;
+    for (int i = 0; i < 6 && ok; i++) ok = (map[25 * 32 + c + i] & 0x3ff) == konami[i];
+    if (ok) col = c;
+  }
+  if (col < 0) return;
+  uint16_t attr = map[25 * 32 + col] & 0xfc00;
+  const char* t = "PC PORT BY T-MAN";
+  int x0 = (32 - (int)strlen(t)) / 2;
+  for (int i = 0; t[i]; i++) {
+    char c = t[i];
+    int g = c == ' ' ? 0 : c == '-' ? 0x2B : (c >= 'A' && c <= 'Z') ? 0x10 + c - 'A' : 0;
+    map[24 * 32 + x0 + i] = attr | (0x100 + g);
+  }
+}
+static void menus_after_vblank(void) { title_credit(); }
 
 int main(int argc, char** argv) {
   SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1");

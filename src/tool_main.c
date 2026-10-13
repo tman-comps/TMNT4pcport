@@ -20,6 +20,9 @@
 //   watch:ADDR:N  print N WRAM bytes whenever they change (from now on)
 //   cdl:FILE      write the coverage log (interp mode) at the end
 //   dump:FILE     write the 128 KB of WRAM
+//   ach:DIR/      run achievements, timer and stats (files in DIR/), print events and unlocks
+//   wav:FILE      record the sound from now on (48 kHz stereo)
+//   msu:DIR/      use DIR/msu.txt and its PCM files (MSU-1 test)
 //   songlog       print each song the game asks for (see msu.c)
 //   apulog/apuoff print writes to the sound CPU ports $2140-$2143
 //   info          print frame number, game state bytes and misses
@@ -32,16 +35,32 @@
 #include "game.h"
 #include "msu.h"
 #include "widescreen.h"
+#include "achievements.h"
+#include "extras.h"
 
 extern uint8_t* g_cdl;
 static Snes* S;
 static uint32_t rng = 1;
 static int wide;   // extra columns on each side (wide:N), shots then come from the PPU's wide buffer
 static uint32_t rnd(void) { rng = rng * 1103515245u + 12345u; return rng >> 16; }
-static int frame_no, god, weak, do_hash, song_log;
+static int frame_no, god, weak, do_hash, song_log, ach_on;
 static struct { uint32_t a; uint8_t v; } fz[64]; static int nfz;
 static struct { uint32_t a; int n; uint8_t last[32]; } wt[16]; static int nwt;
 
+static FILE* wav; static uint32_t wav_bytes; static int msu_on;
+static void wav_frame(void) {
+  static int16_t buf[800 * 2];
+  snes_setSamples(S, buf, 800);
+  if (msu_on) msu_mix(buf, 800, 48000, 100);
+  fwrite(buf, 4, 800, wav); wav_bytes += 3200;
+}
+static void wav_close(void) {
+  if (!wav) return;
+  uint8_t h[44] = "RIFF....WAVEfmt \x10\0\0\0\x01\0\x02\0\x80\xbb\0\0\0\xee\x02\0\x04\0\x10\0data....";
+  uint32_t a = wav_bytes + 36, b = wav_bytes;
+  memcpy(h + 4, &a, 4); memcpy(h + 40, &b, 4);
+  fseek(wav, 0, SEEK_SET); fwrite(h, 1, 44, wav); fclose(wav); wav = NULL;
+}
 static int apu_log;
 extern uint8_t (*g_snes_write_filter)(Snes*, uint32_t, uint8_t);
 static uint8_t apu_filter(Snes* s, uint32_t adr, uint8_t v) {
@@ -66,6 +85,19 @@ static void frame(uint16_t p1, uint16_t p2) {
   if (wide) ws_update(wide);
   runner_frame(S);
   frame_no++;
+  if (wav) wav_frame();
+  if (ach_on) {
+    const GameEvents* ev = game_events(S->ram);
+    if (ev->new_game) printf("f%d EVENT new game\n", frame_no);
+    if (ev->scene_start) printf("f%d EVENT scene %d start\n", frame_no, ev->scene_start);
+    if (ev->scene_clear) printf("f%d EVENT scene %d clear\n", frame_no, ev->scene_clear);
+    if (ev->beaten) printf("f%d EVENT game beaten\n", frame_no);
+    if (ev->continued) printf("f%d EVENT continue\n", frame_no);
+    for (int p = 0; p < 2; p++) if (ev->death[p]) printf("f%d EVENT player %d lost a life\n", frame_no, p + 1);
+    ach_update(ev, 0);
+    extras_frame(ev, 0);
+    for (int id; (id = ach_pop_toast()) >= 0;) { const char *t, *d; ach_get(id, &t, &d); printf("f%d ACHIEVEMENT %s\n", frame_no, t); }
+  }
   if (song_log) {
     static uint32_t last = 0;
     uint32_t sg = msu_current_song();
@@ -223,11 +255,20 @@ int main(int argc, char** argv) {
     else if (!strncmp(w, "dump:", 5)) { FILE* o = fopen(w + 5, "wb"); fwrite(S->ram, 1, sizeof S->ram, o); fclose(o); }
     else if (!strcmp(w, "hash")) do_hash = 1;
     else if (!strcmp(w, "apulog")) g_snes_write_filter = apu_filter;
+    else if (!strncmp(w, "ach:", 4)) { ach_init(S, w + 4); extras_init(S, w + 4); ach_on = 1; }
+    else if (!strncmp(w, "wav:", 4)) { wav = fopen(w + 4, "wb"); uint8_t z[44] = {0}; fwrite(z, 1, 44, wav); wav_bytes = 0; }
+    else if (!strncmp(w, "msu:", 4)) { msu_on = msu_init(S, w + 4, "") > 0; msu_enable(1); }
     else if (!strcmp(w, "songlog")) { msu_init(S, "/nonexistent/", "msu"); msu_enable(1); song_log = 1; extern int g_msu_debug; g_msu_debug = 1; }
     else if (!strcmp(w, "apuoff")) g_snes_write_filter = NULL;
     else if (!strncmp(w, "cdl:", 4)) cdl_out = w + 4;
     else if (!strcmp(w, "info")) printf("f%d %s  bg hofs %d %d %d\n", frame_no, game_describe(S->ram), S->ppu->bgLayer[0].hScroll, S->ppu->bgLayer[1].hScroll, S->ppu->bgLayer[2].hScroll);
     else { fprintf(stderr, "unknown script word: %s\n", w); return 1; }
+  }
+  wav_close();
+  if (ach_on) {
+    extras_shutdown();
+    char l[24][48]; int n = extras_stat_lines(l, 24);
+    for (int i = 0; i < n; i++) printf("STAT %s\n", l[i]);
   }
   if (cdl_out && g_cdl) { FILE* o = fopen(cdl_out, "wb"); fwrite(g_cdl, 1, 1 << 24, o); fclose(o); }
   static uint32_t miss[4096]; int n = runner_miss_list(miss, 4096), nrom = 0;

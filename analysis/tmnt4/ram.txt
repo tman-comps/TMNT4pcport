@@ -1,0 +1,22 @@
+# Turtles in Time (USA): WRAM addresses found by observing the game (used in src/game.h)
+# --- game flow
+0032 Mode              # 1 intro, 2 title, 4 title menu, 5 starting, 6 game (select, cutscenes, scenes, ending)
+003A FrameCounter      # 16-bit, +1 every frame
+0068 Transition        # 1 from turtle select through cutscene and scene card, and from a boss's defeat
+                       # to the next scene; 0 while a scene is played
+0072 SelectStep        # turtle select screen sequencer (5 = waiting for the choice)
+0082 Scene             # 0-9 = scenes 1-10; 10 = Splinter's lair (ending, Versus); 11 at boot
+# --- sound
+1E2C SoundLoadPtr      # pointer to the upload descriptor in $82:B8E8.. / $82:B95D.. (song request: $80:9CC6)
+7E5790 SoundQueue      # one-byte commands sent to $2140 by the NMI at $80:835C ($80 start song, $FE stop, $FC fade)
+# --- players: two blocks of 0x40 bytes
+1A80 Player1
+1AC0 Player2
+  +1A Turtle           # 0 Leonardo, 1 Michelangelo, 2 Donatello, 3 Raphael
+  +20 Lives
+  +22 Health           # 0x10 = full; above that for a moment while the turtle drops in
+# --- objects / bosses
+091A ObjHealth         # object health, one every 0x70 bytes ($091A, $098A, $09FA, ...)
+1BC8 BossBar           # health shown in the boss bar (0 = no boss)
+# --- code the game runs from RAM
+7E4200 RamCode         # copied from ROM at boot, called every frame (runs on the interpreter)

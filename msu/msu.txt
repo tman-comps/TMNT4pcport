@@ -1,0 +1,30 @@
+# Turtles in Time port: song -> MSU-1 track number
+# format:  <song checksum hex> <MSU track number>   # where it plays
+# The checksum identifies the song by the data the game streams to the sound chip (see README.txt).
+# The PCM for track N is any file in this folder ending in "-N.pcm" (e.g. tmnt4-5.pcm).
+# Renumber the second column to match whichever MSU-1 pack you use. Songs the game plays that are
+# missing here are logged to unmapped.txt so you can add them.
+2A99260D  1   # opening (intro and attract sequence)
+2755FF8C  2   # turtle select
+29A8DFF6  3   # story cutscene (Evening News)
+3A657A9F  4   # scene introduction
+DD019E72  5   # scene 1: Big Apple, 3 AM (also the attract demo)
+832F8EAE  6   # scene 2: Alleycat Blues
+CAFB269B  7   # scene 3: Sewer Surfin'
+40BC6CD9  8   # boss
+AD2F2D47  9   # boss defeated / scene clear
+68AE82EA 10   # scene 4: Technodrome (first part)
+9BC75AD6 11   # scene 4: Technodrome
+EAB3AEC5 12   # Shredder in the Technodrome
+6DB82ACB 13   # time warp
+811EEF89 14   # scene 5: Prehistoric Turtlesaurus
+F6DC355E 15   # time warp (later scenes)
+CBB05EA2 16   # scene 6: Skull and Crossbones
+F685C22D 17   # boss (later scenes)
+E6303B22 18   # scene 7: Bury My Shell at Wounded Knee
+2BB32AE2 19   # scene 8: Neon Night-Riders
+8CC09634 20   # scene 9: Starbase
+EB7BF6DD 21   # scene 10: Technodrome, the final shell shock
+3293F6DD 22   # Super Shredder
+92C1FCF4 23   # ending
+BF87E061 24   # results / game over

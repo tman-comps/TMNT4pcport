@@ -1,7 +1,7 @@
 #!/bin/sh
 # Coverage: plays every stage (god mode, fighting bot) and the menus/modes on the interpreter and
 # writes one coverage log per run into $OUT (default build/cov). Then:
-#   python3 -I tools/cdlmap.py roms/tmnt4.sfc analysis/tmnt4/map.json analysis/tmnt4/hints.txt build/cov
+#   python3 -I tools/cdlmap.py roms/tmnt4.sfc analysis/tmnt4/map.json - build/cov
 # usage: tools/cover/run_all.sh [frames_per_stage]   (needs `make tmnt_tool_interp`)
 cd "$(dirname "$0")/../.."
 OUT=${OUT:-build/cov}; mkdir -p $OUT

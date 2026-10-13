@@ -9,7 +9,7 @@
 typedef struct { const char* title; const char* desc; } Ach;
 enum {
   A_START, A_S1, A_S2, A_S3, A_S4, A_S5, A_S6, A_S7, A_S8, A_S9, A_BEAT,
-  A_ALL4, A_DUO, A_UNTOUCHED, A_NOCONT, A_TRIAL, A_COUNT
+  A_ALL4, A_DUO, A_UNTOUCHED, A_NOCONT, A_BOSS, A_COUNT
 };
 static const Ach k_ach[A_COUNT] = {
   {"COWABUNGA!", "Start a new game."},
@@ -27,7 +27,7 @@ static const Ach k_ach[A_COUNT] = {
   {"TOTALLY TUBULAR TEAM", "Clear a scene with two players."},
   {"SHELL OF STEEL", "Clear a scene without losing any health."},
   {"ONE QUARTER", "Beat the game without using a continue."},
-  {"AGAINST THE CLOCK", "Finish a Time Trial course."},
+  {"SHELL SHOCKED", "Defeat a boss without losing a life during the fight."},
 };
 
 static char g_path[1100];
@@ -36,7 +36,7 @@ static int g_toast[A_COUNT], g_toast_n;
 static Snes* s;
 static int g_turtles;          // bit per turtle played (kept across sessions)
 static int g_beaten;           // game beaten at least once
-static int g_run_on, g_run_cont, g_scene_hurt, g_scene_two;
+static int g_run_on, g_run_cont, g_scene_hurt, g_scene_two, g_boss_seen, g_boss_died;
 
 static void save(void) {
   FILE* f = fopen(g_path, "w");
@@ -79,14 +79,17 @@ void ach_update(const GameEvents* ev, int assisted) {
     if (g_turtles == 15) unlock(A_ALL4);
     save();
   }
+  if (ev->scene_start) g_boss_seen = g_boss_died = 0;
   if (game_in_play(ram)) {
     if (ev->hurt[0] || ev->hurt[1] || ev->death[0] || ev->death[1]) g_scene_hurt = 1;
     if (ev->two_players) g_scene_two = 1;
+    if (game_boss_hp(ram) > 0) g_boss_seen = 1;
+    if (g_boss_seen && (ev->death[0] || ev->death[1])) g_boss_died = 1;
   }
   if (ev->scene_clear) {
     int sc = ev->scene_clear;
-    if (ev->time_trial) unlock(A_TRIAL);
-    else if (sc >= 1 && sc <= 9) unlock(A_S1 + sc - 1);
+    if (sc >= 1 && sc <= 9 && !ev->time_trial) unlock(A_S1 + sc - 1);
+    if (g_boss_seen && !g_boss_died) unlock(A_BOSS);
     if (!g_scene_hurt) unlock(A_UNTOUCHED);
     if (g_scene_two) unlock(A_DUO);
   }

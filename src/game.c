@@ -6,7 +6,16 @@ const char* const k_stage_names[10] = {
   "BIG APPLE, 3 AM", "ALLEYCAT BLUES", "SEWER SURFIN'", "TECHNODROME", "PREHISTORIC TURTLESAURUS",
   "SKULL AND CROSSBONES", "BURY MY SHELL AT WOUNDED KNEE", "NEON NIGHT-RIDERS", "STARBASE", "THE FINAL SHELL SHOCK"};
 
-bool game_in_play(const uint8_t* ram) { return ram[RAM_MODE] == 6 && ram[RAM_TRANSIT] == 0; }
+// The transition flag also reads 0 for a few frames when the turtle select screen starts, so play
+// only counts once it has lasted 8 frames (timed with the game's frame counter at $3A).
+bool game_in_play(const uint8_t* ram) {
+  static uint16_t since; static int was;
+  int raw = ram[RAM_MODE] == 6 && ram[RAM_TRANSIT] == 0;
+  uint16_t now = ram[RAM_FRAMES] | ram[RAM_FRAMES + 1] << 8;
+  if (raw && !was) since = now;
+  was = raw;
+  return raw && (uint16_t)(now - since) >= 8;
+}
 bool game_player_active(const uint8_t* ram, int p) {
   const uint8_t* b = game_player(ram, p);
   return b[P_LIVES] || b[P_HP];
@@ -25,8 +34,7 @@ void game_refill_lives(uint8_t* ram, int p) { uint8_t* b = ram + RAM_PLAYER + 0x
 void game_refill_hp(uint8_t* ram, int p) { uint8_t* b = ram + RAM_PLAYER + 0x40 * p; if (b[P_HP] && b[P_HP] < HP_MAX) b[P_HP] = HP_MAX; }
 bool game_cheat_entered(const uint8_t* ram) { (void)ram; return false; }
 bool game_time_trial(const uint8_t* ram) { (void)ram; return false; }
-// final scene: Super Shredder beaten (play stops in scene 10 with a player still standing)
-bool game_final_boss_defeated(const uint8_t* ram) { (void)ram; return false; }
+
 
 // Only during play: the scene-clear tally counts the remaining health down, and refilling it then
 // would make the tally run forever.
@@ -66,13 +74,13 @@ const GameEvents* game_events(const uint8_t* ram) {
   }
   // a scene is cleared when play stops and the scene number moves on to the next one
   if (mode == 6 && e_prev_stage >= 0 && st == e_prev_stage + 1 && e_played_stage == e_prev_stage) ev.scene_clear = st;
-  if (play && st == 9 && game_final_boss_defeated(ram) && e_played_stage == 9) { ev.beaten = true; ev.scene_clear = 10; e_played_stage = -1; }
+  if (ev.scene_clear == 10) ev.beaten = true;   // scene 10 cleared: the ending (in Splinter's lair, scene index 10)
   for (int p = 0; p < 2; p++) {
     int l = game_lives(ram, p), h = game_hp(ram, p);
     if (play && e_prev_lives[p] >= 0) {
       if (l < e_prev_lives[p]) ev.death[p] = true;
       else if (h < e_prev_hp[p] && e_prev_hp[p] > 0) ev.hurt[p] = true;
-      if (l > e_prev_lives[p] + 1 && !e_from_title) ev.continued = true;
+      if (e_prev_lives[p] == 0 && l > 0 && !e_from_title) ev.continued = true;
     }
     e_prev_lives[p] = mode == 6 ? l : -1; e_prev_hp[p] = play ? h : -1;
   }
