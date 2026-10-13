@@ -45,4 +45,4 @@ freely, subject to the following restrictions:
 
 
 Menu font: font8x8_basic.h by Daniel Hepper, based on the IBM VGA fonts - public domain
-(see third_party/font8x8_basic.h and third_party/FONT_LICENSE.txt).
+(see the header of third_party/font8x8_basic.h).
