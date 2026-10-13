@@ -1,0 +1,3 @@
+# Port hook points: the recompiled code (and the interpreter in runner.c) calls g_recomp_hook
+# before executing the instruction at each of these addresses, while g_hook_enable is set.
+# (none yet)
