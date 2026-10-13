@@ -58,7 +58,8 @@ static struct {
   int unlocked;                       // extras unlocked (game beaten, or the game's own code entered)
   int x_stage, x_lives, x_health;     // extras: start scene (0 = off, 1-10), infinite lives, infinite health
   int pad_swap;                       // second controller is player 1
-} cfg = {ASPECT_4_3, 0, 0, 80, 0,  WIDE_OFF, 0, 0, 0, 0,  0, 0, 1, 1, 1,  0, 100,  0, 0, 0, 0, 0};
+  int m7;                             // Mode 7 detail: 0 original, 1 = 2x, 2 = 4x (intro, title, time warps)
+} cfg = {ASPECT_4_3, 0, 0, 80, 0,  WIDE_OFF, 0, 0, 0, 0,  0, 0, 1, 1, 1,  0, 100,  0, 0, 0, 0, 0, 0};
 
 // Remappable bindings, per player: one key and one gamepad button for each SNES button (LakeSnes
 // order: B, Y, Select, Start, Up, Down, Left, Right, A, X, L, R).
@@ -107,6 +108,7 @@ static void cfg_load(void) {
     else if (!strcmp(k, "extra_infinite_lives")) cfg.x_lives = !!v;
     else if (!strcmp(k, "extra_infinite_health")) cfg.x_health = !!v;
     else if (!strcmp(k, "pad_swap")) cfg.pad_swap = !!v;
+    else if (!strcmp(k, "mode7_detail")) cfg.m7 = clampi(v, 0, 2);
     else if (!strncmp(k, "key_", 4) && atoi(k + 4) >= 0 && atoi(k + 4) < 12) g_keymap[0][atoi(k + 4)] = v;
     else if (!strncmp(k, "pad_", 4) && k[4] >= '0' && k[4] <= '9' && atoi(k + 4) < 12) g_padmap[0][atoi(k + 4)] = v;
     else if (!strncmp(k, "p2key_", 6) && atoi(k + 6) >= 0 && atoi(k + 6) < 12) g_keymap[1][atoi(k + 6)] = v;
@@ -123,6 +125,7 @@ static void cfg_save(void) {
           cfg.nolimit, cfg.interp, cfg.no_slowdown, cfg.timer, cfg.rewind, cfg.rumble, cfg.pause_menu);
   fprintf(f, "orchestral_music=%d\nmusic_volume=%d\nextras_unlocked=%d\nextra_start_scene=%d\nextra_infinite_lives=%d\nextra_infinite_health=%d\npad_swap=%d\n",
           cfg.msu, cfg.music_vol, cfg.unlocked, cfg.x_stage, cfg.x_lives, cfg.x_health, cfg.pad_swap);
+  fprintf(f, "mode7_detail=%d\n", cfg.m7);
   for (int i = 0; i < 12; i++) fprintf(f, "key_%d=%d\npad_%d=%d\n", i, (int)g_keymap[0][i], i, g_padmap[0][i]);
   for (int i = 0; i < 12; i++) fprintf(f, "p2key_%d=%d\np2pad_%d=%d\n", i, (int)g_keymap[1][i], i, g_padmap[1][i]);
   fclose(f);
@@ -361,7 +364,7 @@ static void extras_apply(void) {
 enum {
   M_RESUME, M_RESTART, M_CONTINUE, M_OPTIONS, M_ACH, M_STATS, M_SAVE, M_LOAD, M_RESET, M_QUIT,
   M_PG_VIDEO, M_PG_AUDIO, M_PG_GAME, M_PG_P1, M_PG_P2, M_PG_EXTRAS, M_REPORT,
-  M_WIDE, M_ASPECT, M_INTEGER, M_SMOOTH, M_CRT, M_COLOR, M_NOLIMIT, M_FULL,
+  M_WIDE, M_M7, M_ASPECT, M_INTEGER, M_SMOOTH, M_CRT, M_COLOR, M_NOLIMIT, M_FULL,
   M_VOLUME, M_MUSIC, M_MUSICVOL, M_INTERP,
   M_SLOW, M_TIMER, M_REWIND, M_RUMBLE, M_PAUSEBTN,
   M_X_STAGE, M_X_LIVES, M_X_HEALTH,
@@ -372,7 +375,7 @@ static const char* k_page_titles[NPAGES] = {"PAUSE", "PORT SETTINGS", "VIDEO", "
                                             "PLAYER 1 CONTROLS", "PLAYER 2 CONTROLS", "ACHIEVEMENTS", "STATISTICS"};
 static const int k_pg_main[] = {M_RESUME, M_RESTART, M_CONTINUE, M_OPTIONS, M_ACH, M_STATS, M_SAVE, M_LOAD, M_RESET, M_QUIT, -1};
 static const int k_pg_options[] = {M_PG_VIDEO, M_PG_AUDIO, M_PG_GAME, M_PG_P1, M_PG_P2, M_PG_EXTRAS, M_REPORT, -1};
-static const int k_pg_video[] = {M_WIDE, M_ASPECT, M_INTEGER, M_SMOOTH, M_CRT, M_COLOR, M_NOLIMIT, M_FULL, -1};
+static const int k_pg_video[] = {M_WIDE, M_M7, M_ASPECT, M_INTEGER, M_SMOOTH, M_CRT, M_COLOR, M_NOLIMIT, M_FULL, -1};
 static const int k_pg_audio[] = {M_VOLUME, M_MUSIC, M_MUSICVOL, M_INTERP, -1};
 static const int k_pg_game[] = {M_SLOW, M_TIMER, M_REWIND, M_RUMBLE, M_PAUSEBTN, -1};
 static const int k_pg_extras[] = {M_X_STAGE, M_X_LIVES, M_X_HEALTH, -1};
@@ -442,6 +445,7 @@ static void item_text(int id, char* label, char* value, int n) {
     case M_PG_EXTRAS: snprintf(label, n, "EXTRAS"); snprintf(value, n, "%s", cfg.unlocked ? "" : "LOCKED"); break;
     case M_REPORT: snprintf(label, n, "REPORT A PROBLEM"); if (g_report_timer) snprintf(value, n, "SAVED"); break;
     case M_WIDE: snprintf(label, n, "WIDESCREEN"); snprintf(value, n, "%s", wide[cfg.wide]); break;
+    case M_M7: { static const char* m7[] = {"ORIGINAL", "HIGH 2X", "ULTRA 4X"}; snprintf(label, n, "MODE 7 DETAIL"); snprintf(value, n, "%s", m7[cfg.m7]); break; }
     case M_ASPECT: snprintf(label, n, "ASPECT"); snprintf(value, n, "%s", aspect[cfg.aspect]); break;
     case M_INTEGER: snprintf(label, n, "INTEGER SCALE"); snprintf(value, n, "%s", k_on_off[cfg.integer_scale]); break;
     case M_SMOOTH: snprintf(label, n, "SMOOTH PIXELS"); snprintf(value, n, "%s", k_on_off[cfg.smooth]); break;
@@ -522,6 +526,7 @@ static void menu_change(int id, int dir, bool activate) {
                       else if (activate) ui_toast_text("EXTRAS ARE LOCKED", "BEAT THE GAME TO UNLOCK THEM."); break;
     case M_REPORT: if (activate) { crashlog_report(); g_report_timer = 180; } break;
     case M_WIDE: cfg.wide = (cfg.wide + d + WIDE_COUNT) % WIDE_COUNT; break;
+    case M_M7: cfg.m7 = (cfg.m7 + d + 3) % 3; break;
     case M_ASPECT: cfg.aspect = (cfg.aspect + d + ASPECT_COUNT) % ASPECT_COUNT; break;
     case M_INTEGER: cfg.integer_scale ^= 1; break;
     case M_SMOOTH: cfg.smooth ^= 1; break;
@@ -824,6 +829,7 @@ int main(int argc, char** argv) {
   g_snes = snes_init();
   snes_loadRom(g_snes, g_rom, g_rom_len);
   g_snes->ppu->wideBuffer = calloc((256 + 2 * PPU_WIDE_MAX) * 240, 4);
+  g_snes->ppu->m7hiresBuf = calloc((256 + 2 * PPU_WIDE_MAX) * 4 * 896, 4);
   g_state = malloc(4 * 1024 * 1024);
   g_cont = malloc(4 * 1024 * 1024);
   crashlog_init(g_snes, g_base, settings_summary);
@@ -850,6 +856,11 @@ int main(int argc, char** argv) {
   SDL_SetTextureBlendMode(uitex, SDL_BLENDMODE_BLEND);
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
   tex[1] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WW, 224);
+  SDL_Texture* htex[2];   // high-resolution Mode 7 frames (up to 4x)
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+  htex[0] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 256 * 4, 224 * 4);
+  SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+  htex[1] = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 256 * 4, 224 * 4);
   apply_fullscreen();
 
   SDL_AudioSpec want = {0}, have;
@@ -951,6 +962,8 @@ int main(int argc, char** argv) {
         if (gc && SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16000) rw_held = true;
       }
       int frames = fast ? 4 : 1;
+      g_snes->ppu->m7hiresK = cfg.m7 == 2 ? 4 : cfg.m7 == 1 ? 2 : 0;
+      g_snes->ppu->m7frameUsed = false;
       if (cfg.rewind && rw_held) {
         frames = 0;
         if (rewind_step()) {   // stepped back: run one frame (no input) to redraw
@@ -1033,6 +1046,17 @@ int main(int argc, char** argv) {
     SDL_Texture* t = tex[cfg.smooth ? 1 : 0];
     SDL_Rect up = {0, 0, fw, 224};
     SDL_UpdateTexture(t, &up, frame, WW * 4);
+    // Mode 7 frames (intro, title, time warps; never widescreen) can be redrawn at 2x / 4x
+    if (cfg.m7 && g_snes->ppu->m7hiresK && g_snes->ppu->m7frameUsed && !g_menu && act == 0) {
+      int K = g_snes->ppu->m7hiresK;
+      g_snes->ppu->wideExtra = 0;
+      ppu_renderMode7Hires(g_snes->ppu);
+      color_apply(g_snes->ppu->m7hiresBuf, 256 * K, 256 * K, 224 * K);
+      t = htex[cfg.smooth ? 1 : 0];
+      up = (SDL_Rect){0, 0, 256 * K, 224 * K};
+      SDL_UpdateTexture(t, &up, g_snes->ppu->m7hiresBuf, 256 * K * 4);
+      want = 0; fw = 256;
+    }
     int ww, wh;
     SDL_GetRendererOutputSize(ren, &ww, &wh);
     double ar = want > 0 ? fw * pixel_aspect() / 224.0

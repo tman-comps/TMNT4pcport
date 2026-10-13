@@ -250,6 +250,14 @@ int main(int argc, char** argv) {
       }
       for (int k = 0; k < np; k++) if (cnt[k] * 20 >= (uint32_t)n) printf("pc %06X %u\n", pcs[k], cnt[k]);
     }
+    else if (!strncmp(w, "m7scan:", 7)) {   // frames (of N) that show Mode 7
+      int n = atoi(w + 7), m7 = 0;
+      if (!S->ppu->m7hiresBuf) S->ppu->m7hiresBuf = calloc((256 + 2 * PPU_WIDE_MAX) * 4 * 896, 4);
+      S->ppu->m7hiresK = 2;
+      for (int i = 0; i < n; i++) { S->ppu->m7frameUsed = false; frame(0, 0); m7 += S->ppu->m7frameUsed; }
+      S->ppu->m7hiresK = 0;
+      printf("mode7 frames: %d of %d (%s)\n", m7, n, game_describe(S->ram));
+    }
     else if (!strcmp(w, "lagreport")) printf("lag: %d of %d play frames\n", lag_n, lag_frames);
     else if (!strncmp(w, "poke:", 5)) { char* e; uint32_t a = strtoul(w + 5, &e, 16); S->ram[a & 0x1ffff] = strtoul(e + 1, 0, 16); }
     else if (!strncmp(w, "freeze:", 7)) { char* e; fz[nfz].a = strtoul(w + 7, &e, 16) & 0x1ffff; fz[nfz++].v = strtoul(e + 1, 0, 16); }

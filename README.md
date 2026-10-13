@@ -11,9 +11,11 @@ A native PC version of the SNES **Teenage Mutant Ninja Turtles IV: Turtles in Ti
 - **Native speed, faithful gameplay.** The recompiled code does exactly what the original does: each instruction performs the same bus accesses as the reference interpreter, and the two are checked frame for frame (identical RAM, VRAM, palette and sprite memory every frame).
 - **Two players.** Each player gets their own keys and controller. The first controller is player 1, the second player 2 (swappable). Player 2 joins any time with Start, as on the console.
 - **Widescreen** 16:10, 16:9 and 21:9 while a scene is being played. The extra columns come from the level data the game has already loaded either side of the screen. Columns that were never loaded, such as left of where a scene or boss room starts, stay black like the end of a level. Title, cutscenes and scene cards stay 4:3.
-- **Remove slowdown.** The SNES version lags when the screen gets busy; this gives the game's CPU enough time every frame. Only active while a scene is being played.
+- **Remove slowdown.** The game does all its work in the vblank interrupt, and when a busy scene doesn't finish in time a frame is lost. This gives the game's CPU enough time every frame. Only active while a scene is being played.
+- **Mode 7 detail.** The intro, title and time-warp effects can be redrawn at 2× or 4× resolution.
 - **Pause menu.** Start (or Esc, or the Guide button) opens the port's menu over the game: Resume, Restart scene, Continue from the last scene, Port settings, Achievements, Statistics, Save/Load state, Reset, Quit. The Start button can be set back to the game's own pause.
-- **Achievements:** 16 of them, with pop-ups, a list in the menu, and optional Steam support.
+- **Achievements:** 16 of them, with pop-ups, a list in the menu, and optional Steam support (`steam/achievements.txt`).
+- **"PC PORT BY T-MAN"** on the title screen, in the game's own font.
 - **Speedrun timer** with per-scene splits and saved personal bests (in console frames, so PC speed doesn't matter), plus play statistics.
 - **Rewind:** hold Backspace or the left trigger.
 - **CRT filter** (scanlines or full CRT), **colour styles**, **sprite flicker removal** and crisper sound interpolation.

@@ -1,0 +1,19 @@
+# Steam achievements, in the order of src/achievements.c (API names ACH_00 ...).
+# Enter these in Steamworks if the port is ever set up as a Steam app; steam.c mirrors unlocks
+# when steam_api64.dll / libsteam_api.so is next to the program and Steam is running.
+ACH_00  COWABUNGA!               Start a new game.
+ACH_01  BIG APPLE, 3 AM          Clear scene 1.
+ACH_02  ALLEYCAT BLUES           Clear scene 2.
+ACH_03  SEWER SURFIN'            Clear scene 3.
+ACH_04  LET'S KICK SHELL!        Clear the Technodrome, scene 4.
+ACH_05  TURTLESAURUS             Clear Prehistoric Turtlesaurus, scene 5.
+ACH_06  SKULL AND CROSSBONES     Clear the pirate ship, scene 6.
+ACH_07  WOUNDED KNEE             Clear the train, scene 7.
+ACH_08  NEON NIGHT-RIDERS        Clear scene 8.
+ACH_09  STARBASE                 Clear the Starbase, scene 9.
+ACH_10  TURTLES IN TIME          Beat Super Shredder and save New York.
+ACH_11  HEROES IN A HALF SHELL   Play a scene as each of the four turtles.
+ACH_12  TOTALLY TUBULAR TEAM     Clear a scene with two players.
+ACH_13  SHELL OF STEEL           Clear a scene without losing any health.
+ACH_14  ONE QUARTER              Beat the game without using a continue.
+ACH_15  SHELL SHOCKED            Defeat a boss without losing a life during the fight.
