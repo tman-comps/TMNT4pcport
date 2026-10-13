@@ -82,6 +82,9 @@ roms/
 *_log.txt
 *_crash.txt
 *_report.txt
+*_report_*.txt
+*_crash_*.txt
+tmnt_font.bin
 unmapped.txt
 vram.bin
 wram.bin

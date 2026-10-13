@@ -412,6 +412,13 @@ static const char* key_label(SDL_Keycode k) {
   const char* n = SDL_GetKeyName(k);
   snprintf(b, sizeof b, "%s", n && *n ? n : "-");
   for (char* c = b; *c; c++) if (*c >= 'a' && *c <= 'z') *c -= 32;
+  static const char* const shorter[][2] = {{"RIGHT SHIFT", "RSHIFT"}, {"LEFT SHIFT", "LSHIFT"}, {"RIGHT CTRL", "RCTRL"},
+    {"LEFT CTRL", "LCTRL"}, {"RIGHT ALT", "RALT"}, {"LEFT ALT", "LALT"}, {"RETURN", "ENTER"}, {"BACKSPACE", "BKSP"},
+    {"KEYPAD ", "KP"}, {"SPACE", "SPC"}};
+  for (unsigned i = 0; i < sizeof shorter / sizeof shorter[0]; i++) {
+    char* at = strstr(b, shorter[i][0]);
+    if (at) { char rest[24]; snprintf(rest, sizeof rest, "%s", at + strlen(shorter[i][0])); snprintf(at, sizeof b - (at - b), "%s%s", shorter[i][1], rest); }
+  }
   return b;
 }
 static const char* pad_label(int b) {
