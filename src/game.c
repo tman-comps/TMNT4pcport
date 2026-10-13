@@ -32,7 +32,9 @@ void game_set_start_stage(uint8_t* ram, int stage) { ram[RAM_STAGE] = (uint8_t)s
 // (call only during play, see game_god_mode)
 void game_refill_lives(uint8_t* ram, int p) { uint8_t* b = ram + RAM_PLAYER + 0x40 * p; if (b[P_LIVES] < 3) b[P_LIVES] = 3; }
 void game_refill_hp(uint8_t* ram, int p) { uint8_t* b = ram + RAM_PLAYER + 0x40 * p; if (b[P_HP] && b[P_HP] < HP_MAX) b[P_HP] = HP_MAX; }
-bool game_cheat_entered(const uint8_t* ram) { (void)ram; return false; }
+// the game's 10-lives code (title screen, controller 2: Up Up Down Down Left Right B A) sets this
+// byte from 1 to 2; $1BD0 counts the code's progress
+bool game_cheat_entered(const uint8_t* ram) { return ram[RAM_CHEAT] == 2; }
 bool game_time_trial(const uint8_t* ram) { (void)ram; return false; }
 
 

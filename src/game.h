@@ -14,6 +14,7 @@ enum {
   RAM_STAGE    = 0x0082,   // scene 0-9: Big Apple 3 AM ... Technodrome (the final scene); 10 = Splinter's lair (ending, Versus)
   RAM_BOSS_HP  = 0x1BC8,   // the boss bar's value (0 = no boss on screen)
   RAM_OBJ_HP   = 0x091A,   // object health, every 0x70 bytes
+  RAM_CHEAT    = 0x1FFC,   // 1, or 2 once the 10-lives code was entered at the title
   RAM_PLAYER   = 0x1A80,   // player blocks, 0x40 bytes each (player 1, player 2)
   P_TURTLE     = 0x1A,     //   0 Leo, 1 Mike, 2 Don, 3 Raph
   P_LIVES      = 0x20,

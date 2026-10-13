@@ -36,7 +36,7 @@ trusted, growing with the camera; outside is black. State loads trust the whole 
 
 ## Not done / ideas
 1. Time Trial isn't detected (no RAM flag found yet); the timer/achievements treat it as a game.
-2. The game's own cheat codes weren't found; extras unlock by beating the game.
+2. Extras unlock by beating the game or by the game's 10-lives code ($1FFC = 2).
 3. The Technodrome Shredder (thrown-soldier fight) stops the coverage bot; scenes after it were
    covered through the scene warp.
 4. Possible polish: draw the menus into BG3 like the Star Wars port (here they're an overlay in the

@@ -20,7 +20,7 @@ A native PC version of the SNES **Teenage Mutant Ninja Turtles IV: Turtles in Ti
 - **Rewind:** hold Backspace or the left trigger.
 - **CRT filter** (scanlines or full CRT), **colour styles**, **sprite flicker removal** and crisper sound interpolation.
 - **Orchestral / remastered music** through your own MSU-1 audio packs (see `msu/`).
-- **Extras**, unlocked by beating the game: start at any scene, infinite lives, and Pizza Power (health always full).
+- **Extras**, unlocked by beating the game or entering the game's own 10-lives code (title screen, controller 2: Up, Up, Down, Down, Left, Right, B, A): start at any scene, infinite lives, and Pizza Power (health always full).
 - Rumble, full keyboard and controller rebinding for both players, 60 fps at any window size, and crash reports you can send.
 
 ---

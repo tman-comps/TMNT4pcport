@@ -6,6 +6,8 @@
                        # to the next scene; 0 while a scene is played
 0072 SelectStep        # turtle select screen sequencer (5 = waiting for the choice)
 0082 Scene             # 0-9 = scenes 1-10; 10 = Splinter's lair (ending, Versus); 11 at boot
+1BD0 CheatProgress     # steps of the 10-lives code entered on controller 2 at the title
+1FFC CheatLives        # 1 normally, 2 once the code is entered (Options then allows 10 lives)
 # --- sound
 1E2C SoundLoadPtr      # pointer to the upload descriptor in $82:B8E8.. / $82:B95D.. (song request: $80:9CC6)
 7E5790 SoundQueue      # one-byte commands sent to $2140 by the NMI at $80:835C ($80 start song, $FE stop, $FC fade)
