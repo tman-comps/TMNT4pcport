@@ -1,0 +1,15 @@
+# Code server for online play. On a Synology: Container Manager -> Project -> Create, pick the
+# folder holding this file and tmnt_relay.py. Elsewhere: docker compose up -d
+# Then forward UDP port 7846 on the router to this machine (see README.md here).
+services:
+  tmnt-relay:
+    image: python:3.12-alpine
+    container_name: tmnt-relay
+    command: ["python", "-u", "/app/tmnt_relay.py", "--port", "7846"]
+    volumes:
+      - ./tmnt_relay.py:/app/tmnt_relay.py:ro
+    ports:
+      - "7846:7846/udp"
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 64m

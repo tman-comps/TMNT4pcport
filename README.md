@@ -10,10 +10,11 @@ A native PC version of the SNES **Teenage Mutant Ninja Turtles IV: Turtles in Ti
 
 - **Native speed, faithful gameplay.** The recompiled code does exactly what the original does: each instruction performs the same bus accesses as the reference interpreter, and the two are checked frame for frame (identical RAM, VRAM, palette and sprite memory every frame).
 - **Two players.** Each player gets their own keys and controller. The first controller is player 1, the second player 2 (swappable). Player 2 joins any time with Start, as on the console.
+- **Online play** for two, over the internet or a home network: rollback netcode, so your own turtle reacts at once even with some lag. See [Online play](#online-play).
 - **Widescreen** 16:10, 16:9 and 21:9 while a scene is being played. The extra columns come from the level data the game has already loaded either side of the screen. Columns that were never loaded, such as left of where a scene or boss room starts, stay black like the end of a level. Title, cutscenes and scene cards stay 4:3.
 - **Remove slowdown.** The game does all its work in the vblank interrupt, and when a busy scene doesn't finish in time a frame is lost. This gives the game's CPU enough time every frame. Only active while a scene is being played.
 - **Mode 7 detail.** The intro, title and time-warp effects can be redrawn at 2× or 4× resolution.
-- **Pause menu.** Start (or Esc, or the Guide button) opens the port's menu over the game: Resume, Restart scene, Continue from the last scene, Port settings, Achievements, Statistics, Save/Load state, Reset, Quit. The Start button can be set back to the game's own pause.
+- **Pause menu.** Start (or Esc, or the Guide button) opens the port's menu over the game: Resume, Restart scene, Continue from the last scene, Online play, Port settings, Achievements, Statistics, Save/Load state, Reset, Quit. The Start button can be set back to the game's own pause.
 - **Achievements:** 16 of them, with pop-ups, a list in the menu, and optional Steam support (`steam/achievements.txt`).
 - **"PC PORT BY T-MAN"** on the title screen, in the game's own font.
 - **Speedrun timer** with per-scene splits and saved personal bests (in console frames, so PC speed doesn't matter), plus play statistics.
@@ -56,6 +57,28 @@ Both have the same features. To play:
 2. Run the program. You can also drag the ROM file onto it.
 
 Settings are saved in `tmnt.ini` next to the program. Save states, best times, stats and achievements are kept in `tmnt*` files next to it too.
+
+---
+
+## Online play
+
+Two players on two computers, each with the program and their own copy of the ROM (the same USA version). Only the controller input of each frame goes over the network; both computers run the same game, so it plays exactly as it does on one machine.
+
+**With a code** (needs a code server, see [`tools/relay`](tools/relay/README.md); one of you can run it on a NAS or any always-on machine): the host picks *Menu → Online play → Host with code* and tells the other player the four-character code shown; they enter it under *Code* (type it on the keyboard, paste it with Ctrl+V, or pick each character with left/right and up/down) and pick *Join with code*. Nobody needs to set up their router except for the server.
+
+**By IP address** (no server):
+
+1. **Host:** *Menu → Online play → Host a game*. The menu then shows your IP address. You can keep playing while you wait.
+2. **Player 2:** *Menu → Online play → Address*, enter the host's address (left/right picks a digit, up/down changes it, confirm when done), then *Join this address*.
+3. The host's game is sent over and play continues from there. The host is player 1, the other side player 2: press Start in a scene to join, as on the console.
+
+From the command line or Steam's launch options: `--host`, or `--join 192.168.1.20` (also `--port N`, `--delay N`).
+
+**Over the internet** the host has to be reachable on **UDP port 7845**: forward that port on the host's router, or put both computers in the same virtual network with a tool such as Tailscale or ZeroTier and use that address. On a home network nothing needs setting up.
+
+**How it feels:** each side sees its own input at once. The other player's input arrives a little later; until it does, the game assumes they still hold what they held last, and when that was wrong it goes back and replays the few frames in between (rollback). *Input delay* (default 2 frames) holds your own input back that long, which hides most of the lag and makes corrections rarer; raise it for distant players, lower it on a home network. Every half second both sides compare a checksum of the game, and if they ever differ the host sends its state again.
+
+**While online:** the Start button goes to the game (the pause menu is on Esc / Guide and doesn't pause an online game); save states, rewind, fast forward, restart and reset are off; *Remove slowdown* and the extras are the host's settings; orchestral music is off (it changes what the game sends to the sound chip); achievements and best times aren't recorded. Picture and sound settings are each player's own. The Windows and Linux builds, launcher and native, can all play together.
 
 ---
 

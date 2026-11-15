@@ -69,6 +69,7 @@ struct Ppu {
   uint8_t objPriorityBuffer[256];
   // ---- widescreen extension (port addition; inactive while wideExtra == 0)
   bool noSpriteLimit;            // port: draw every sprite on a line (no 32-sprite / 34-tile limit)
+  bool skipRender;               // port: run a line without drawing it (netplay replays); sprite flags still update
   int wideExtra;                 // extra pixels rendered on each side (<= PPU_WIDE_MAX)
   uint32_t* wideBuffer;          // (256 + 2*PPU_WIDE_MAX) x 240, 0x00RRGGBB, x offset PPU_WIDE_MAX
   int curScreenX;                // screen x of the pixel being rendered

@@ -17,7 +17,7 @@ CFLAGS  ?= -O2 -g
 CFLAGS  += -Ithird_party/lakesnes -Ithird_party -Isrc -Igen -w
 LAKE    := $(addprefix third_party/lakesnes/,spc.c dsp.c apu.c cpu.c dma.c ppu.c cart.c input.c statehandler.c snes.c snes_other.c)
 GEN     := $(wildcard gen/recomp_*.c)
-COMMON  := src/game.c src/runner.c src/rom_check.c src/ui.c src/achievements.c src/extras.c src/msu.c src/steam.c src/crashlog.c src/widescreen.c
+COMMON  := src/game.c src/runner.c src/rom_check.c src/ui.c src/achievements.c src/extras.c src/msu.c src/steam.c src/crashlog.c src/widescreen.c src/netplay.c src/net_udp.c
 
 BUILD   := build
 LAKE_O  := $(patsubst %.c,$(BUILD)/%.o,$(LAKE))
@@ -90,7 +90,7 @@ $(WBUILD)/%.o: %.c
 	$(WINCC) $(WCFLAGS) -c $< -o $@
 
 tmnt.exe: $(W_LAKE) $(W_GEN) $(W_COM)
-	$(WINCC) -o $@ $^ -L$(SDLWIN)/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -static-libgcc
+	$(WINCC) -o $@ $^ -L$(SDLWIN)/lib -lmingw32 -lSDL2main -lSDL2 -lws2_32 -mwindows -static-libgcc
 
 win: tmnt.exe
 	cp $(SDLWIN)/bin/SDL2.dll .
@@ -109,7 +109,7 @@ $(WLBUILD)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(WINCC) $(WCFLAGS) -DTMNT_LAUNCHER -c $< -o $@
 tmnt_launcher.exe: $(W_LAKE) $(patsubst %.c,$(WLBUILD)/%.o,$(COMMON) src/main_sdl.c)
-	$(WINCC) -o $@ $^ -L$(SDLWIN)/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -static-libgcc
+	$(WINCC) -o $@ $^ -L$(SDLWIN)/lib -lmingw32 -lSDL2main -lSDL2 -lws2_32 -mwindows -static-libgcc
 
 launcher: tmnt_launcher tmnt_launcher.exe
 	cp $(SDLWIN)/bin/SDL2.dll .

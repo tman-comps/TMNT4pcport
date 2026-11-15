@@ -79,6 +79,7 @@ Ppu* ppu_init(Snes* snes) {
   ppu_setPixelOutputFormat(ppu, ppu_pixelOutputFormatBGRX);
   ppu->wideExtra = 0;
   ppu->noSpriteLimit = false;
+  ppu->skipRender = false;
   ppu->m7hiresK = 0;
   ppu->m7hiresBuf = NULL;
   ppu->wideBuffer = NULL;
@@ -276,6 +277,7 @@ void ppu_runLine(Ppu* ppu, int line) {
   // evaluate sprites
   memset(ppu->objPixelBuffer, 0, sizeof(ppu->objPixelBuffer));
   if(!ppu->forcedBlank) ppu_evaluateSprites(ppu, line - 1);
+  if(ppu->skipRender) return;   // port: the picture isn't needed (its sprite flags above are)
   // actual line
   if(ppu->mode == 7) ppu_calculateMode7Starts(ppu, line);
   if(ppu->m7hiresK && line >= 1 && line <= 224) {

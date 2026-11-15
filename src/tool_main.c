@@ -28,6 +28,7 @@
 //   songlog       print each song the game asks for (see msu.c)
 //   apulog/apuoff print writes to the sound CPU ports $2140-$2143
 //   info          print frame number, game state bytes and misses
+//   nettest:LAT:JIT:LOSS:N[:DELAY[:CORRUPT[:SKEW]]]  online play over a simulated link (see nettest())
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,8 @@
 #include "widescreen.h"
 #include "achievements.h"
 #include "extras.h"
+#include "netplay.h"
+#include <time.h>
 
 extern uint8_t* g_cdl;
 static Snes* S;
@@ -212,6 +215,122 @@ static void state_io(const char* name, int save) {
   }
 }
 
+// ---- nettest: two netplay sides over a simulated link, sharing one SNES by swapping save states
+// (which also checks that a save state holds everything the game's future depends on).
+//   nettest:LATENCY_MS:JITTER_MS:LOSS_PCT:FRAMES[:DELAY[:CORRUPT_FRAME[:SKEW_PCT]]]
+// The host (player 1) starts from the current state, the client from a freshly reset console: it
+// gets the host's state over the link. Both play with random bots. At the end the host's input log is
+// replayed from the start state and must give the same checksums the host computed.
+#define NT_QMAX 4096
+typedef struct { double at; int len; uint8_t d[1100]; } NtPkt;
+typedef struct NtPeer {
+  Netplay* np; uint8_t* blob; int blob_len;
+  NtPkt* q; int nq;              // packets on their way TO this peer
+  struct NtPeer* other;
+  uint32_t rng; uint16_t held; int hold_left;
+  uint16_t* log1; uint16_t* log2; int log_max;   // inputs used per session frame (last run wins)
+} NtPeer;
+static double nt_lat, nt_jit, nt_loss, nt_now;
+static uint32_t nt_rng = 12345;
+static uint32_t nt_rand(uint32_t* r) { *r = *r * 1103515245u + 12345u; return *r >> 16; }
+static uint32_t nt_fnv(void) { uint32_t h = 2166136261u; for (int i = 0; i < 0x20000; i++) h = (h ^ S->ram[i]) * 16777619u; return h; }
+static int nt_save(void* c, uint8_t* b) { (void)c; return snes_saveState(S, b); }
+static uint8_t* nt_start; static int nt_start_len;   // the state the host sent: start of the replay
+static NtPeer* nt_client;
+static void nt_load(void* c, const uint8_t* b, int n) {
+  if (c == nt_client && np_status(nt_client->np) == NP_SYNCING && !nt_start_len) { memcpy(nt_start, b, n); nt_start_len = n; }
+  snes_loadState(S, (uint8_t*)b, n);
+}
+static uint32_t nt_crc(void* c) { (void)c; return nt_fnv(); }
+static int32_t nt_corrupt = -1;   // the client's game "goes wrong" at this frame (every time it's run, like a real bug)
+static void nt_advance(void* c, int32_t f, uint16_t p1, uint16_t p2, bool render) {
+  NtPeer* pe = c;
+  if (pe->log1 && f < pe->log_max) { pe->log1[f] = p1; pe->log2[f] = p2; }
+  for (int i = 0; i < 12; i++) { snes_setButtonState(S, 1, i, (p1 >> i) & 1); snes_setButtonState(S, 2, i, (p2 >> i) & 1); }
+  S->ppu->skipRender = !render;
+  runner_frame(S);
+  S->ppu->skipRender = false;
+  if (c == nt_client && f == nt_corrupt) { S->ram[0x1A80 + 0x20] += 3; nt_corrupt = -1; printf("client: player 1 lives changed at frame %d\n", f); }
+}
+static void nt_send(void* c, const uint8_t* d, int len) {
+  NtPeer* to = ((NtPeer*)c)->other;
+  if (nt_rand(&nt_rng) % 10000 < nt_loss * 100 || to->nq >= NT_QMAX || len > 1100) return;
+  NtPkt* k = &to->q[to->nq++];
+  k->at = nt_now + (nt_lat + (nt_rand(&nt_rng) % 1000) / 1000.0 * nt_jit) / 1000.0;
+  k->len = len; memcpy(k->d, d, len);
+}
+static uint16_t nt_bot(NtPeer* pe, int join) {
+  if (pe->hold_left-- <= 0) {
+    static const uint16_t cho[] = {(1 << BTN_RIGHT) | (1 << BTN_Y), 1 << BTN_RIGHT, 1 << BTN_Y, (1 << BTN_UP) | (1 << BTN_Y),
+      (1 << BTN_DOWN) | (1 << BTN_Y), (1 << BTN_B) | (1 << BTN_Y), 1 << BTN_LEFT, 1 << BTN_A, 0};
+    pe->held = cho[nt_rand(&pe->rng) % 9]; pe->hold_left = 2 + nt_rand(&pe->rng) % 20;
+    if (join && nt_rand(&pe->rng) % 8 == 0) { pe->held = 1 << BTN_START; pe->hold_left = 3; }
+  }
+  return pe->held;
+}
+static void nettest(char* args) {
+  int lat = 0, jit = 0, loss = 0, frames = 600, delay = 2, corrupt = -1, skew = 0;
+  sscanf(args, "%d:%d:%d:%d:%d:%d:%d", &lat, &jit, &loss, &frames, &delay, &corrupt, &skew);
+  nt_lat = lat; nt_jit = jit; nt_loss = loss; nt_now = 0;
+  static NtPeer A, B;
+  NtPeer* pe[2] = {&A, &B};
+  for (int i = 0; i < 2; i++) {
+    pe[i]->blob = malloc(NP_STATE_MAX); pe[i]->q = calloc(NT_QMAX, sizeof(NtPkt)); pe[i]->other = pe[1 - i];
+    pe[i]->rng = 777 + i * 1000;
+  }
+  A.log_max = frames + 64; A.log1 = calloc(A.log_max, 2); A.log2 = calloc(A.log_max, 2);
+  A.blob_len = snes_saveState(S, A.blob);
+  snes_reset(S, true); for (int i = 0; i < 30; i++) runner_frame(S);
+  B.blob_len = snes_saveState(S, B.blob);
+  NpSettings set = {0};
+  NpCallbacks cb = {0, nt_save, nt_load, nt_advance, nt_crc, nt_send};
+  cb.ctx = &A; A.np = np_create(true, cb, 1, &set, delay);
+  cb.ctx = &B; B.np = np_create(false, cb, 1, NULL, delay);
+  nt_start = malloc(NP_STATE_MAX); nt_start_len = 0; nt_client = &B; nt_corrupt = corrupt;
+  double t[2] = {0, 0.003}, dt[2] = {1 / 60.0988, 1 / 60.0988 * (1 + skew / 100.0)};
+  int ticks = 0, ran[2] = {0, 0};
+  clock_t c0 = clock();
+  while (np_frame(A.np) < (uint32_t)frames && ticks < frames * 4) {
+    int i = t[0] <= t[1] ? 0 : 1;    // whichever side's next tick comes first
+    nt_now = t[i];
+    NtPeer* p = pe[i];
+    snes_loadState(S, p->blob, p->blob_len);   // this side's game, then what has arrived for it
+    for (int k = 0; k < p->nq;) {
+      if (p->q[k].at <= nt_now) { np_receive(p->np, p->q[k].d, p->q[k].len, nt_now); p->q[k] = p->q[--p->nq]; }
+      else k++;
+    }
+    NpStatus before = np_status(p->np);
+    if (i == 0 && before == NP_WAITING && ticks > 20) {   // someone "joins" after a moment: the host keeps playing until then
+      for (int k = 0; k < 12; k++) snes_setButtonState(S, 1, k, 0);
+      runner_frame(S);
+    }
+    ran[i] += np_tick(p->np, np_status(p->np) == NP_RUNNING ? nt_bot(p, i == 1) : 0, nt_now);
+    p->blob_len = snes_saveState(S, p->blob);
+    if (np_status(p->np) == NP_ENDED) { printf("ended: %s\n", np_message(p->np)); break; }
+    t[i] += dt[i]; ticks++;
+  }
+  double secs = (double)(clock() - c0) / CLOCKS_PER_SEC;
+  const NpStats* sa = np_stats(A.np); const NpStats* sb = np_stats(B.np);
+  printf("host:   frame %u confirmed %d  rollbacks %d (max %d, %d frames replayed)  stalls %d  desyncs %d  resyncs %d  ping %d ms\n",
+         np_frame(A.np), np_confirmed(A.np), sa->rollbacks, sa->max_depth, sa->frames_resimulated, sa->stalls, sa->desyncs, sa->resyncs, sa->ping_ms);
+  printf("client: frame %u confirmed %d  rollbacks %d (max %d, %d frames replayed)  stalls %d  desyncs %d  resyncs %d  ping %d ms\n",
+         np_frame(B.np), np_confirmed(B.np), sb->rollbacks, sb->max_depth, sb->frames_resimulated, sb->stalls, sb->desyncs, sb->resyncs, sb->ping_ms);
+  printf("cpu: %.2f s for %d ticks (%.2f ms per tick, both sides, incl. state swaps)\n", secs, ticks, secs * 1000 / ticks);
+  // replay the host's log from the start state and compare checksums
+  if (nt_start_len && sa->resyncs == 0) {
+    snes_loadState(S, nt_start, nt_start_len);
+    int ok = 0, bad = 0; int32_t last = np_confirmed(A.np);
+    for (int32_t f = 0; f <= last && f < A.log_max; f++) {
+      uint32_t c;
+      if (np_debug_crc(A.np, f, &c)) { if (c == nt_fnv()) ok++; else { if (!bad) printf("replay differs first at frame %d\n", f); bad++; } }
+      nt_advance(&B, f, A.log1[f], A.log2[f], true);
+    }
+    printf("replay: %d checksums match, %d differ\n", ok, bad);
+  }
+  printf("%s\n", game_describe(S->ram));
+  snes_loadState(S, A.blob, A.blob_len);
+}
+
 int main(int argc, char** argv) {
   if (argc < 4) { fprintf(stderr, "usage: %s rom interp|recomp \"script\"\n", argv[0]); return 1; }
   int len; uint8_t* rom = runner_load_file(argv[1], &len);
@@ -283,6 +402,18 @@ int main(int argc, char** argv) {
     }
     else if (!strncmp(w, "dump:", 5)) { FILE* o = fopen(w + 5, "wb"); fwrite(S->ram, 1, sizeof S->ram, o); fclose(o); }
     else if (!strcmp(w, "hash")) do_hash = 1;
+    else if (!strncmp(w, "nettest:", 8)) nettest(w + 8);
+    else if (!strncmp(w, "bench:", 6)) {   // ms per frame, per save state and per load (N frames)
+      int n = atoi(w + 6); static uint8_t b[NP_STATE_MAX]; int len = 0;
+      clock_t c0 = clock(); for (int i = 0; i < n; i++) runner_frame(S);
+      clock_t c1 = clock(); for (int i = 0; i < n; i++) len = snes_saveState(S, b);
+      clock_t c2 = clock(); for (int i = 0; i < n; i++) snes_loadState(S, b, len);
+      clock_t c3 = clock(); uint32_t h = 0; for (int i = 0; i < n; i++) h += nt_fnv();
+      clock_t c4 = clock(); S->ppu->skipRender = true; for (int i = 0; i < n; i++) runner_frame(S); S->ppu->skipRender = false;
+      clock_t c5 = clock(); printf("frame without picture %.3f ms\n", (c5 - c4) * 1000.0 / CLOCKS_PER_SEC / n);
+      printf("frame %.3f ms  save %.3f ms (%d bytes)  load %.3f ms  checksum %.3f ms\n", (c1 - c0) * 1000.0 / CLOCKS_PER_SEC / n,
+             (c2 - c1) * 1000.0 / CLOCKS_PER_SEC / n, len, (c3 - c2) * 1000.0 / CLOCKS_PER_SEC / n, (c4 - c3) * 1000.0 / CLOCKS_PER_SEC / n + 0 * h);
+    }
     else if (!strcmp(w, "apulog")) g_snes_write_filter = apu_filter;
     else if (!strncmp(w, "ach:", 4)) { ach_init(S, w + 4); extras_init(S, w + 4); ach_on = 1; }
     else if (!strncmp(w, "wav:", 4)) { wav = fopen(w + 4, "wb"); uint8_t z[44] = {0}; fwrite(z, 1, 44, wav); wav_bytes = 0; }
