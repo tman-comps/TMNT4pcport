@@ -18,7 +18,7 @@ A native PC version of the SNES **Teenage Mutant Ninja Turtles IV: Turtles in Ti
 - **"PC PORT BY T-MAN"** on the title screen, in the game's own font.
 - **Speedrun timer** with per-scene splits and saved personal bests (in console frames, so PC speed doesn't matter), plus play statistics.
 - **Rewind:** hold Backspace or the left trigger.
-- **CRT filter** (scanlines or full CRT), **colour styles**, **sprite flicker removal** and crisper sound interpolation.
+- **CRT filter** (scanlines or full CRT, at the original brightness), **colour styles**, **sprite flicker removal** and crisper sound interpolation.
 - **Orchestral / remastered music** through your own MSU-1 audio packs (see `msu/`).
 - **Extras**, unlocked by beating the game or entering the game's own 10-lives code (title screen, controller 2: Up, Up, Down, Down, Left, Right, B, A): start at any scene, infinite lives, and Pizza Power (health always full).
 - Rumble, full keyboard and controller rebinding for both players, 60 fps at any window size, and crash reports you can send.

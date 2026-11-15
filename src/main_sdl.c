@@ -220,6 +220,10 @@ static void color_apply(uint32_t* buf, int stride, int w, int h) {
 
 // CRT filter: a multiply-blended overlay over the picture: scanlines on the 224 game lines, and for
 // "Full CRT" also an aperture-grille mask and a soft vignette. Rebuilt when the size or mode changes.
+// Where the renderer can, the overlay is blended as dst * src * 2, so it can brighten as well as
+// darken: the centre of each line glows a little above the original and the overall brightness stays
+// the same as without the filter (like a real CRT, whose bright lines bloom into the gaps). Without
+// it (software renderer) it falls back to a plain multiply, which only darkens.
 static SDL_Texture* g_crt_tex;
 static int g_crt_w, g_crt_h, g_crt_mode;
 static void crt_overlay(SDL_Renderer* ren, SDL_Rect dst) {
@@ -228,8 +232,15 @@ static void crt_overlay(SDL_Renderer* ren, SDL_Rect dst) {
     if (g_crt_tex) SDL_DestroyTexture(g_crt_tex);
     g_crt_tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, dst.w, dst.h);
     if (!g_crt_tex) return;
+    SDL_BlendMode mod2x = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_DST_COLOR, SDL_BLENDFACTOR_SRC_COLOR, SDL_BLENDOPERATION_ADD,
+                                                     SDL_BLENDFACTOR_ZERO, SDL_BLENDFACTOR_ONE, SDL_BLENDOPERATION_ADD);
+    bool x2 = SDL_SetTextureBlendMode(g_crt_tex, mod2x) == 0;
+    if (!x2) SDL_SetTextureBlendMode(g_crt_tex, SDL_BLENDMODE_MOD);
     uint32_t* px = malloc((size_t)dst.w * dst.h * 4);
     double strength = cfg.crt == 2 ? 0.45 : 0.35;
+    // average of the scanline profile is 1 - strength/3, of the mask (1 + 2*0.82)/3: undo both
+    double gain = x2 ? 1.0 / ((1.0 - strength / 3.0) * (cfg.crt == 2 ? 0.88 : 1.0)) : 1.0;
+    double enc = x2 ? 0.5 : 1.0;   // with the 2x blend, texel 128 means "unchanged"
     for (int y = 0; y < dst.h; y++) {
       double ph = (y + 0.5) * 224.0 / dst.h; ph -= (int)ph;
       double d = ph - 0.5, scan = 1.0 - strength * (4.0 * d * d);
@@ -242,12 +253,13 @@ static void crt_overlay(SDL_Renderer* ren, SDL_Rect dst) {
           double vx = (x + 0.5) / dst.w - 0.5, v = 1.0 - 0.55 * (vx * vx + vy * vy) * 1.6;
           r *= v; g *= v; b *= v;
         }
-        px[y * dst.w + x] = 0xff000000u | ((int)(r * 255) << 16) | ((int)(g * 255) << 8) | (int)(b * 255);
+        r *= gain * enc; g *= gain * enc; b *= gain * enc;
+        r = r > 1 ? 1 : r; g = g > 1 ? 1 : g; b = b > 1 ? 1 : b;
+        px[y * dst.w + x] = 0xff000000u | ((int)(r * 255 + 0.5) << 16) | ((int)(g * 255 + 0.5) << 8) | (int)(b * 255 + 0.5);
       }
     }
     SDL_UpdateTexture(g_crt_tex, NULL, px, dst.w * 4);
     free(px);
-    SDL_SetTextureBlendMode(g_crt_tex, SDL_BLENDMODE_MOD);
     g_crt_w = dst.w; g_crt_h = dst.h; g_crt_mode = cfg.crt;
   }
   SDL_RenderCopy(ren, g_crt_tex, NULL, &dst);
@@ -703,9 +715,10 @@ static const char* settings_summary(void) {
 
 // ---------------------------------------------------------------- automated test driver
 // TMNT_AUTOTEST="w600 k:Return w60 shot:a.ppm q": wN wait frames, k:KEY tap a key, d:/u: key down/up, shot:FILE, q quit.
+// screen:FILE saves what the window shows (scaled, filtered, CRT), shot:FILE the 224-line picture.
 static const char* g_at;
 static int g_at_wait;
-static char g_at_shot[256];
+static char g_at_shot[256], g_at_screen[256];
 static void at_key(SDL_Keycode k, bool down) {
   SDL_Event e = {0};
   e.type = down ? SDL_KEYDOWN : SDL_KEYUP; e.key.keysym.sym = k; e.key.state = down ? SDL_PRESSED : SDL_RELEASED;
@@ -722,6 +735,7 @@ static void autotest_tick(void) {
   if (w[0] == 'w') g_at_wait = atoi(w + 1);
   else if (w[0] == 'q') g_quit = true;
   else if (!strncmp(w, "shot:", 5)) snprintf(g_at_shot, sizeof g_at_shot, "%s", w + 5);
+  else if (!strncmp(w, "screen:", 7)) snprintf(g_at_screen, sizeof g_at_screen, "%s", w + 7);
   else if (w[1] == ':' && (w[0] == 'k' || w[0] == 'd' || w[0] == 'u')) {
     SDL_Keycode k = SDL_GetKeyFromName(w + 2);
     if (w[0] != 'u') at_key(k, true);
@@ -738,6 +752,23 @@ static void autotest_shot(const uint32_t* buf, int stride, int w, int h) {
     fclose(f);
   }
   g_at_shot[0] = 0;
+}
+
+static void autotest_screen(SDL_Renderer* ren) {
+  if (!g_at_screen[0]) return;
+  int w, h;
+  SDL_GetRendererOutputSize(ren, &w, &h);
+  uint32_t* px = malloc((size_t)w * h * 4);
+  if (px && SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, px, w * 4) == 0) {
+    FILE* f = fopen(g_at_screen, "wb");
+    if (f) {
+      fprintf(f, "P6 %d %d 255\n", w, h);
+      for (int i = 0; i < w * h; i++) { fputc(px[i] >> 16, f); fputc(px[i] >> 8, f); fputc(px[i], f); }
+      fclose(f);
+    }
+  }
+  free(px);
+  g_at_screen[0] = 0;
 }
 
 // ---------------------------------------------------------------- ROM loading
@@ -1103,6 +1134,7 @@ int main(int argc, char** argv) {
       if (want > 0) { ud.w = (int)((double)dst.w * 256 / fw); ud.x = dst.x + (dst.w - ud.w) / 2; }
       SDL_RenderCopy(ren, uitex, NULL, &ud);
     }
+    autotest_screen(ren);
     SDL_RenderPresent(ren);
     next += (uint64_t)(frame_time * freq);
     uint64_t now = SDL_GetPerformanceCounter();
