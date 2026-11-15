@@ -1,5 +1,5 @@
-# Builds the Windows launcher on GitHub's servers every time you push, and attaches it to a
-# Release when you push a version tag (e.g. v1.0.0).
+# Builds the Windows and Linux launchers on GitHub's servers every time you push, and attaches
+# them to a Release when you push a version tag (e.g. v1.0.0).
 #
 # This project builds with a Makefile and mingw-w64 (cross-compiled on Linux), not CMake.
 # GitHub has no ROM, so it builds the *launcher*: the version with no generated game code, which
@@ -12,7 +12,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: ['**']   # every branch: the default branch here isn't called main
     tags: ['v*']
   pull_request:
 
@@ -64,10 +64,43 @@ jobs:
           generate_release_notes: true
 
   linux:
-    runs-on: ubuntu-latest
+    # 22.04 rather than latest: the binary then needs only glibc 2.34, so it also runs on older
+    # distributions. SDL2 is linked from the system (SteamOS and desktop distributions have it).
+    runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Get the code
+        uses: actions/checkout@v4
+
       - name: Install SDL2
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+
       - name: Build the Linux launcher and tools
         run: make -j2 tmnt_launcher tmnt_tool_interp romhash
+
+      - name: Package
+        run: |
+          mkdir -p package/msu
+          cp tmnt_launcher package/
+          cp README.md THIRD_PARTY_LICENSES.txt package/
+          cp msu/README.txt msu/msu.txt package/msu/
+          # tar keeps the executable bit (a zip from the Actions tab doesn't)
+          tar czf TurtlesInTime-linux.tar.gz -C package .
+
+      - name: Make sure no ROM or game data slipped into the package
+        run: |
+          if tar tzf TurtlesInTime-linux.tar.gz | grep -Ei '\.(sfc|smc|swc|fig|pcm)$'; then
+            echo "ROM or audio file found in the package"; exit 1
+          fi
+
+      - name: Keep the build (downloadable from the Actions tab)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurtlesInTime-linux
+          path: TurtlesInTime-linux.tar.gz
+
+      - name: Publish Release (only for version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TurtlesInTime-linux.tar.gz
+          generate_release_notes: true

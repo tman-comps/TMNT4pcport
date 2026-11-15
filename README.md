@@ -47,13 +47,15 @@ Get-FileHash .\tmnt4.sfc -Algorithm SHA1
 
 There are two versions:
 
-- **The launcher** (`tmnt_launcher.exe`) contains no game code. It runs the game on the built-in SNES core straight from your ROM. GitHub builds this one automatically, and it's the one attached to Releases.
+- **The launcher** (`tmnt_launcher.exe` on Windows, `tmnt_launcher` on Linux) contains no game code. It runs the game on the built-in SNES core straight from your ROM. GitHub builds both automatically, and they're the ones attached to Releases.
 - **The native build** (`tmnt.exe`) translates the game's code to native C from *your* ROM when you build it. You build it yourself (see below).
 
 Both have the same features. To play:
 
 1. Put the program, `SDL2.dll`, and your ROM (`tmnt4.sfc`) in one folder.
 2. Run the program. You can also drag the ROM file onto it.
+
+On Linux, unpack `TurtlesInTime-linux.tar.gz` and put your ROM next to `tmnt_launcher`. It uses the system's SDL2 (`libsdl2-2.0-0` on Debian/Ubuntu; SteamOS already has it).
 
 Settings are saved in `tmnt.ini` next to the program. Save states, best times, stats and achievements are kept in `tmnt*` files next to it too.
 
@@ -83,6 +85,13 @@ All of these can be changed in *Port settings → Player 1 / Player 2 controls*.
 | Fast forward | hold Tab |
 | Fullscreen | F11 or Alt+Enter |
 | Recompiled / interpreted CPU (native build) | F12 |
+
+### Steam Deck, Legion Go and other handhelds (SteamOS)
+
+1. In desktop mode, unpack `TurtlesInTime-linux.tar.gz` into a folder of your own, e.g. `~/Games/TurtlesInTime`, and copy your ROM there.
+2. In Steam: *Games → Add a Non-Steam Game to My Library → Browse*, pick `tmnt_launcher`. No Proton needed. (The Windows `.exe` with Proton also works.)
+3. In game mode, set the refresh rate to **60 Hz** in the Quick Access menu (*··· → Performance*). The game runs at the console's 60.1 frames a second; at 90 or 144 Hz frames are shown for uneven times and scrolling judders.
+4. In *Port settings → Video*: Widescreen 16:10 for the handheld's own screen, Aspect 4:3, Fullscreen on.
 
 **Steam Controller:** while Steam is running, it applies its Desktop Configuration to programs it didn't start (A acts as Enter, and so on). Add the program to Steam as a non-Steam game, or set a gamepad template as Steam's Desktop Layout.
 
